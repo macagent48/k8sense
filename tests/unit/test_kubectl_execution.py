@@ -38,3 +38,15 @@ async def test_timeout_returns_error():
     result = await run_kubectl(["version", "--client"], timeout=0.001)
     assert result["exit_code"] == -1
     assert "timeout" in result["stderr"].lower()
+
+
+@pytest.mark.asyncio
+async def test_kubectl_missing_from_path_returns_error(monkeypatch, tmp_path):
+    # Simulate kubectl not being installed by pointing PATH at an empty dir.
+    # This is environment manipulation, not mocking — the subprocess primitive
+    # genuinely can't find kubectl.
+    monkeypatch.setenv("PATH", str(tmp_path))
+    result = await run_kubectl(["get", "pods"])
+    assert result["exit_code"] == -1
+    assert "kubectl" in result["stderr"].lower()
+    assert "not found" in result["stderr"].lower()

@@ -37,12 +37,19 @@ async def run_kubectl(
             "exit_code": -1,
         }
 
-    proc = await asyncio.create_subprocess_exec(
-        "kubectl",
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "kubectl",
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        return {
+            "stdout": "",
+            "stderr": "kubectl not found on PATH",
+            "exit_code": -1,
+        }
     try:
         stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
