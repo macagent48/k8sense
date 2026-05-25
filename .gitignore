@@ -10,3 +10,4 @@ venv/
 dist/
 build/
 .k8sense/
+evals/report.md

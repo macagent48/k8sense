@@ -70,3 +70,80 @@ def load_dataset(path: Path) -> list[EvalCase]:
             )
         )
     return cases
+
+
+# --- live driver ---------------------------------------------------------
+
+
+async def _run_one_case(case: EvalCase) -> EvalResult:
+    """Run a single question against the real agent and capture result + tool calls."""
+    from claude_agent_sdk import (
+        AssistantMessage,
+        ClaudeSDKClient,
+        ResultMessage,
+        TextBlock,
+        ToolUseBlock,
+    )
+
+    from k8sense.agent import build_options
+    from k8sense.prompts.system import build_system_prompt
+
+    system_prompt = await build_system_prompt()
+    options = build_options(system_prompt)
+    final_parts: list[str] = []
+    tool_calls: list[dict[str, Any]] = []
+
+    async with ClaudeSDKClient(options=options) as client:
+        await client.query(case.question)
+        async for message in client.receive_response():
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        final_parts.append(block.text)
+                    elif isinstance(block, ToolUseBlock):
+                        tool_calls.append({"name": block.name, "input": block.input})
+            elif isinstance(message, ResultMessage):
+                if getattr(message, "result", None):
+                    final_parts.append(message.result)
+
+    return EvalResult(final_text="\n".join(final_parts), tool_calls=tool_calls)
+
+
+async def _amain() -> int:
+    import argparse as _argparse
+
+    parser = _argparse.ArgumentParser(description="Run k8sense evals")
+    parser.add_argument("--dataset", default="evals/dataset.jsonl")
+    parser.add_argument("--report", default="evals/report.md")
+    args = parser.parse_args()
+
+    dataset_path = Path(args.dataset)
+    cases = load_dataset(dataset_path)
+    rows: list[str] = ["| id | pass | failures |", "| --- | --- | --- |"]
+    passed = 0
+
+    for case in cases:
+        result = await _run_one_case(case)
+        ok, failures = score_fingerprints(case, result)
+        passed += int(ok)
+        rows.append(
+            f"| {case.id} | {'✓' if ok else '✗'} | "
+            f"{'<br>'.join(failures) if failures else ''} |"
+        )
+
+    report = [
+        "# k8sense eval report",
+        "",
+        f"**{passed}/{len(cases)} passed**",
+        "",
+        *rows,
+    ]
+    Path(args.report).write_text("\n".join(report) + "\n", encoding="utf-8")
+    print(f"{passed}/{len(cases)} passed — report written to {args.report}")
+    return 0 if passed == len(cases) else 1
+
+
+if __name__ == "__main__":
+    import asyncio as _asyncio
+
+    raise SystemExit(_asyncio.run(_amain()))
