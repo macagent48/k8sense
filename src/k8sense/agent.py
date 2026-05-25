@@ -32,6 +32,26 @@ DEFAULT_MODEL = "claude-sonnet-4-6"
 
 _EXIT_CODE_RE = re.compile(r"^exit_code=(-?\d+)", re.MULTILINE)
 
+SUBAGENT_DISPATCH_TOOL_NAME = "Task"  # SDK names the dispatch primitive "Task"
+_BRIEF_MAX_LEN = 120
+
+
+def is_subagent_dispatch(tool_name: str) -> bool:
+    """Return True if the tool name signals a subagent dispatch (not a normal tool call)."""
+    return tool_name == SUBAGENT_DISPATCH_TOOL_NAME
+
+
+def extract_subagent_dispatch(tool_input: dict) -> tuple[str, str]:
+    """Pull (subagent_name, brief description) from a Task tool call input.
+
+    Brief prefers `description` over `prompt`, truncated to a renderer-friendly length.
+    """
+    name = tool_input.get("subagent_type", "<unknown>")
+    brief = tool_input.get("description") or tool_input.get("prompt") or ""
+    if len(brief) > _BRIEF_MAX_LEN:
+        brief = brief[: _BRIEF_MAX_LEN - 1] + "…"
+    return name, brief
+
 
 @dataclass
 class ToolBudget:
@@ -154,7 +174,11 @@ def _dispatch_message(message, renderer: Renderer, budget: ToolBudget) -> bool:
                 if not budget.charge():
                     renderer.error(f"hit max tool calls ({budget.limit})")
                     return False
-                renderer.tool_call(block.name, block.input)
+                if is_subagent_dispatch(block.name):
+                    name, brief = extract_subagent_dispatch(block.input or {})
+                    renderer.subagent_dispatch(name, brief)
+                else:
+                    renderer.tool_call(block.name, block.input)
         return True
 
     if isinstance(message, UserMessage):

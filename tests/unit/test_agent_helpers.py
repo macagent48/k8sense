@@ -106,3 +106,45 @@ def test_build_options_includes_three_subagents():
 
     for name, agent in agents.items():
         assert isinstance(agent, AgentDefinition), f"{name} is not AgentDefinition"
+
+
+from k8sense.agent import (  # noqa: E402
+    SUBAGENT_DISPATCH_TOOL_NAME,
+    is_subagent_dispatch,
+    extract_subagent_dispatch,
+)
+
+
+def test_is_subagent_dispatch_detects_task_tool():
+    assert is_subagent_dispatch(SUBAGENT_DISPATCH_TOOL_NAME) is True
+
+
+def test_is_subagent_dispatch_rejects_kubectl():
+    assert is_subagent_dispatch("mcp__k8sense__kubectl") is False
+
+
+def test_extract_subagent_dispatch_pulls_name_and_brief():
+    block_input = {
+        "subagent_type": "log_investigator",
+        "description": "investigate argocd-server",
+    }
+    name, brief = extract_subagent_dispatch(block_input)
+    assert name == "log_investigator"
+    assert brief == "investigate argocd-server"
+
+
+def test_extract_subagent_dispatch_uses_prompt_if_no_description():
+    block_input = {
+        "subagent_type": "event_triager",
+        "prompt": "scan warnings in argocd",
+    }
+    name, brief = extract_subagent_dispatch(block_input)
+    assert name == "event_triager"
+    assert "scan warnings" in brief
+
+
+def test_extract_subagent_dispatch_truncates_long_brief():
+    long = "x" * 500
+    block_input = {"subagent_type": "et", "description": long}
+    _, brief = extract_subagent_dispatch(block_input)
+    assert len(brief) <= 120
