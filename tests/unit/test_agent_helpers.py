@@ -13,13 +13,14 @@ def test_build_options_returns_object_with_system_prompt():
     assert getattr(options, "system_prompt", None) == "SYS PROMPT"
 
 
-def test_build_options_allows_only_the_kubectl_tool():
+def test_build_options_includes_kubectl_and_prometheus_tools():
     options = build_options("SYS", model_id="claude-sonnet-4-6")
     allowed = getattr(options, "allowed_tools", None)
     assert allowed is not None
     assert any("kubectl" in t for t in allowed)
-    # No other tools should slip in
-    assert len(allowed) == 1
+    assert any("prometheus" in t for t in allowed)
+    # Exactly these two in Phase 2
+    assert len(allowed) == 2
 
 
 def test_tool_budget_allows_calls_under_limit():

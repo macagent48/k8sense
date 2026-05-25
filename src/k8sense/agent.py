@@ -20,6 +20,7 @@ from claude_agent_sdk import (
 from k8sense.prompts.system import build_system_prompt
 from k8sense.render import Renderer
 from k8sense.tools.kubectl import kubectl_tool
+from k8sense.tools.prometheus import prometheus_tool
 
 MAX_TOOL_CALLS = 20
 DEFAULT_MODEL = "claude-sonnet-4-6"
@@ -91,16 +92,19 @@ def parse_handler_envelope(text: str) -> tuple[int, str, str]:
 def build_options(
     system_prompt: str, model_id: str = DEFAULT_MODEL
 ) -> ClaudeAgentOptions:
-    """Construct ClaudeAgentOptions wired with the kubectl tool only."""
+    """Construct ClaudeAgentOptions wired with kubectl + prometheus tools."""
     server = create_sdk_mcp_server(
         name="k8sense",
-        version="0.1.0",
-        tools=[kubectl_tool],
+        version="0.2.0",
+        tools=[kubectl_tool, prometheus_tool],
     )
     return ClaudeAgentOptions(
         system_prompt=system_prompt,
         mcp_servers={"k8sense": server},
-        allowed_tools=["mcp__k8sense__kubectl"],
+        allowed_tools=[
+            "mcp__k8sense__kubectl",
+            "mcp__k8sense__prometheus_query",
+        ],
         model=model_id,
     )
 
