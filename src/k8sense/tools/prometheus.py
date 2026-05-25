@@ -80,3 +80,69 @@ def _format_result(data: dict) -> str:
     if truncated:
         joined += "\n… (truncated)"
     return joined
+
+
+import time  # noqa: E402
+from typing import Any  # noqa: E402
+
+import httpx  # noqa: E402
+
+
+async def run_prometheus_query(
+    query: str,
+    lookback: str | None = None,
+    timeout: float = DEFAULT_TIMEOUT_S,
+) -> dict[str, Any]:
+    """Execute a PromQL instant or range query.
+
+    Returns {"stdout": str, "stderr": str, "exit_code": int}.
+    - exit_code == 0: success
+    - exit_code == 1: Prometheus returned status="error" (bad PromQL)
+    - exit_code == -1: connection / lookback / non-200 error before the query ran
+    """
+    url = _resolve_url()
+
+    if lookback is not None:
+        try:
+            lb_seconds = _parse_lookback(lookback)
+        except ValueError as exc:
+            return {"stdout": "", "stderr": str(exc), "exit_code": -1}
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if lookback is None:
+                response = await client.get(
+                    f"{url}/api/v1/query", params={"query": query}
+                )
+            else:
+                end = time.time()
+                start = end - lb_seconds
+                step = _compute_step(lb_seconds)
+                response = await client.get(
+                    f"{url}/api/v1/query_range",
+                    params={"query": query, "start": start, "end": end, "step": step},
+                )
+    except httpx.RequestError as exc:
+        return {
+            "stdout": "",
+            "stderr": f"prometheus unreachable: {type(exc).__name__}: {exc}",
+            "exit_code": -1,
+        }
+
+    if response.status_code != 200:
+        return {
+            "stdout": "",
+            "stderr": f"prometheus HTTP {response.status_code}: {response.text[:200]}",
+            "exit_code": -1,
+        }
+
+    body = response.json()
+    if body.get("status") != "success":
+        err = body.get("error", "unknown error")
+        return {"stdout": "", "stderr": f"promql error: {err}", "exit_code": 1}
+
+    return {
+        "stdout": _format_result(body.get("data", {})),
+        "stderr": "",
+        "exit_code": 0,
+    }

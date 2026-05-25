@@ -119,3 +119,62 @@ def test_format_result_truncates_when_too_many_lines():
     output = _format_result(data)
     assert "truncated" in output
     assert output.count("\n") < 55  # well under MAX_RESULT_LINES
+
+
+import os  # noqa: E402
+
+from k8sense.tools.prometheus import run_prometheus_query  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_run_query_returns_error_when_prometheus_unreachable(monkeypatch):
+    # Point at a deliberately-invalid address — no mocking, just env redirection.
+    monkeypatch.setenv("K8SENSE_PROM_URL", "http://127.0.0.1:1")
+    result = await run_prometheus_query("up")
+    assert result["exit_code"] == -1
+    assert (
+        "unreachable" in result["stderr"].lower()
+        or "connect" in result["stderr"].lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_query_returns_error_for_invalid_lookback():
+    result = await run_prometheus_query("up", lookback="5xyz")
+    assert result["exit_code"] == -1
+    assert "invalid lookback" in result["stderr"]
+
+
+_REAL_PROM = os.environ.get("K8SENSE_PROM_URL_FOR_TESTS", "http://192.168.70.174:9090")
+
+
+def _prom_reachable() -> bool:
+    """Quick TCP probe — used to skip live tests when Prom is down."""
+    import socket
+    from urllib.parse import urlparse
+
+    p = urlparse(_REAL_PROM)
+    try:
+        with socket.create_connection((p.hostname, p.port or 9090), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+@pytest.mark.skipif(not _prom_reachable(), reason="Prometheus not reachable")
+@pytest.mark.asyncio
+async def test_instant_query_against_real_prometheus(monkeypatch):
+    monkeypatch.setenv("K8SENSE_PROM_URL", _REAL_PROM)
+    # 'up' is the simplest universally-available metric
+    result = await run_prometheus_query("up")
+    assert result["exit_code"] == 0, result["stderr"]
+    assert "resultType=vector" in result["stdout"]
+
+
+@pytest.mark.skipif(not _prom_reachable(), reason="Prometheus not reachable")
+@pytest.mark.asyncio
+async def test_range_query_against_real_prometheus(monkeypatch):
+    monkeypatch.setenv("K8SENSE_PROM_URL", _REAL_PROM)
+    result = await run_prometheus_query("up", lookback="5m")
+    assert result["exit_code"] == 0, result["stderr"]
+    assert "resultType=matrix" in result["stdout"]
