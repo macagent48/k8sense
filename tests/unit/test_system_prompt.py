@@ -42,3 +42,22 @@ async def test_build_system_prompt_raises_when_topology_fetch_fails(
     monkeypatch.setenv("PATH", str(tmp_path))
     with pytest.raises(RuntimeError, match="topology fetch failed"):
         await build_system_prompt()
+
+
+def test_prompt_mentions_specialised_subagents():
+    prompt = build_system_prompt_from_topology("")
+    # The delegation paragraph should mention each subagent by name
+    assert "event_triager" in prompt
+    assert "log_investigator" in prompt
+    assert "metrics_analyst" in prompt
+
+
+def test_prompt_explains_when_to_dispatch_subagents():
+    prompt = build_system_prompt_from_topology("").lower()
+    assert "delegate" in prompt or "dispatch" in prompt
+
+
+def test_prompt_explains_when_NOT_to_dispatch():
+    prompt = build_system_prompt_from_topology("").lower()
+    # For simple direct questions, use kubectl yourself — should be in the prompt
+    assert "simple" in prompt or "directly" in prompt or "yourself" in prompt
