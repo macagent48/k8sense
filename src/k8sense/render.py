@@ -32,6 +32,10 @@ class Renderer:
             command = f"{name}({arguments!r})"
         self.console.print(Text(f"→ {command}", style="cyan"))
 
+    def subagent_dispatch(self, name: str, brief: str) -> None:
+        """Render a subagent dispatch marker."""
+        self.console.print(Text(f"↳ dispatching {name}: {brief}", style="bold cyan"))
+
     def tool_result(self, stdout: str, stderr: str, exit_code: int) -> None:
         body_parts = [f"exit_code={exit_code}"]
         if stdout:

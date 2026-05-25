@@ -81,3 +81,19 @@ def test_tool_call_renders_mcp_prefixed_kubectl_inline(captured):
     assert "get pods -n argocd" in output
     # And critically, the repr-fallback should NOT have fired
     assert "mcp__k8sense__kubectl(" not in output
+
+
+def test_subagent_dispatch_prints_name_and_brief(captured):
+    renderer, console = captured
+    renderer.subagent_dispatch("log_investigator", "investigate argocd-server restarts")
+    output = console.export_text()
+    assert "log_investigator" in output
+    assert "investigate argocd-server restarts" in output
+
+
+def test_subagent_dispatch_uses_dispatch_marker(captured):
+    renderer, console = captured
+    renderer.subagent_dispatch("event_triager", "scan warnings")
+    output = console.export_text()
+    # The marker glyph signals dispatch visually
+    assert "↳" in output or "dispatching" in output.lower()
