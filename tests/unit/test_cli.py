@@ -24,10 +24,31 @@ def test_parser_rejects_unknown_subcommand():
         parser.parse_args(["frobnicate"])
 
 
-def test_doctor_check_reports_missing_api_key(monkeypatch):
+def test_doctor_check_reports_no_auth_when_both_missing(monkeypatch, tmp_path):
+    # Both ANTHROPIC_API_KEY and claude CLI absent → failure
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))  # empty PATH hides claude CLI
     findings = doctor_check()
-    assert any("ANTHROPIC_API_KEY" in f.message and not f.ok for f in findings)
+    assert any("no auth" in f.message and not f.ok for f in findings)
+
+
+def test_doctor_check_accepts_claude_cli_oauth(monkeypatch, tmp_path):
+    # API key absent, claude CLI present on PATH → success
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # Create a fake claude executable on a PATH we control
+    fake_claude = tmp_path / "claude"
+    fake_claude.write_text("#!/bin/sh\necho 2.1.0\n")
+    fake_claude.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    findings = doctor_check()
+    assert any("OAuth" in f.message and f.ok for f in findings)
+
+
+def test_doctor_check_accepts_api_key(monkeypatch):
+    # API key present → success regardless of claude CLI
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    findings = doctor_check()
+    assert any("API billing" in f.message and f.ok for f in findings)
 
 
 def test_doctor_check_reports_kubectl_presence(monkeypatch):

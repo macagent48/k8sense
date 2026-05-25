@@ -54,9 +54,20 @@ def doctor_check() -> list[Finding]:
         )
 
     if os.environ.get("ANTHROPIC_API_KEY"):
-        findings.append(Finding(ok=True, message="ANTHROPIC_API_KEY is set"))
+        findings.append(
+            Finding(ok=True, message="ANTHROPIC_API_KEY is set (API billing)")
+        )
+    elif shutil.which("claude"):
+        findings.append(
+            Finding(ok=True, message="claude CLI on PATH (OAuth via Claude Code)")
+        )
     else:
-        findings.append(Finding(ok=False, message="ANTHROPIC_API_KEY is not set"))
+        findings.append(
+            Finding(
+                ok=False,
+                message="no auth: set ANTHROPIC_API_KEY or install the claude CLI",
+            )
+        )
 
     return findings
 

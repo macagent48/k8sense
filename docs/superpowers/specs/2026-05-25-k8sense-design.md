@@ -368,7 +368,7 @@ The sentinel _process_ is long-running; every agent _call_ is a one-shot.
 
 ### Config & secrets
 
-- `ANTHROPIC_API_KEY` from environment (also loaded from `.env` in dev via `python-dotenv`).
+- Auth: defaults to whatever the local `claude` CLI is logged into (OAuth via Claude Code). Set `ANTHROPIC_API_KEY` in env (or `.env`) to override and bill against the Anthropic API directly.
 - Kubeconfig: default `$KUBECONFIG` / `~/.kube/config`. Single cluster.
 - Per-user config at `~/.k8sense/config.toml`:
   ```toml

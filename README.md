@@ -19,9 +19,17 @@ pip install -e ".[dev]"
 # Or with uv:
 uv sync --extra dev
 
-# Then in either case:
+# Optional: only if you want to bill via the Anthropic API instead of using
+# your existing Claude Code OAuth login:
 cp .env.example .env  # add your ANTHROPIC_API_KEY
 ```
+
+## Authentication
+
+k8sense uses whatever auth your `claude` CLI is logged into by default
+(typically OAuth via Claude Code, billed against your Claude subscription).
+Set `ANTHROPIC_API_KEY` only if you want to bill against your Anthropic API
+account instead.
 
 ## Usage
 
