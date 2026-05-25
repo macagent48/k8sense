@@ -1,4 +1,4 @@
-{"id": "ns-list", "question": "List every namespace in the cluster.", "fingerprints": [{"type": "tool_called", "value": "kubectl"}, {"type": "substring", "value": "kube-system"}]}
+{"id": "ns-list", "question": "List every namespace in the cluster.", "fingerprints": [{"type": "tool_called", "value": "kubectl"}, {"type": "substring", "value": "kube-system"}, {"type": "subagent_not_called", "value": "event_triager"}, {"type": "subagent_not_called", "value": "log_investigator"}, {"type": "subagent_not_called", "value": "metrics_analyst"}]}
 {"id": "node-count", "question": "How many nodes does the cluster have?", "fingerprints": [{"type": "tool_called", "value": "kubectl"}, {"type": "regex", "value": "\\d+\\s*nodes?"}]}
 {"id": "cluster-version", "question": "What is the cluster version?", "fingerprints": [{"type": "tool_called", "value": "kubectl"}, {"type": "regex", "value": "v\\d+\\.\\d+\\.\\d+"}]}
 {"id": "argocd-pods", "question": "Are the pods in the argocd namespace healthy?", "fingerprints": [{"type": "tool_args_contains", "value": "argocd"}, {"type": "substring", "value": "argocd"}]}

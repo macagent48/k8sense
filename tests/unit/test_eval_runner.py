@@ -263,3 +263,62 @@ def test_subagent_called_handles_missing_input_safely():
     result = _result(tool_calls=[{"name": "Agent"}])
     passes, failures = score_fingerprints(case, result)
     assert passes is False
+
+
+def test_subagent_not_called_passes_when_no_dispatch():
+    case = EvalCase(
+        id="t18",
+        question="?",
+        fingerprints=[
+            {"type": "subagent_not_called", "value": "log_investigator"},
+        ],
+    )
+    result = _result(
+        tool_calls=[
+            {"name": "mcp__k8sense__kubectl", "input": {"args": ["get", "ns"]}},
+        ]
+    )
+    passes, _ = score_fingerprints(case, result)
+    assert passes is True
+
+
+def test_subagent_not_called_fails_when_dispatched():
+    case = EvalCase(
+        id="t19",
+        question="?",
+        fingerprints=[
+            {"type": "subagent_not_called", "value": "metrics_analyst"},
+        ],
+    )
+    result = _result(
+        tool_calls=[
+            {
+                "name": "Agent",
+                "input": {"subagent_type": "metrics_analyst", "description": "x"},
+            },
+        ]
+    )
+    passes, failures = score_fingerprints(case, result)
+    assert passes is False
+    assert "metrics_analyst" in failures[0]
+    assert "shouldn't" in failures[0]
+
+
+def test_subagent_not_called_passes_when_different_subagent_dispatched():
+    case = EvalCase(
+        id="t20",
+        question="?",
+        fingerprints=[
+            {"type": "subagent_not_called", "value": "log_investigator"},
+        ],
+    )
+    result = _result(
+        tool_calls=[
+            {
+                "name": "Agent",
+                "input": {"subagent_type": "event_triager", "description": "x"},
+            },
+        ]
+    )
+    passes, _ = score_fingerprints(case, result)
+    assert passes is True

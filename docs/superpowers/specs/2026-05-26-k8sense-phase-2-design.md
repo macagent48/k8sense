@@ -42,7 +42,7 @@ ClaudeAgentOptions(
     system_prompt=...,                              # Phase 1 + delegation addendum
     mcp_servers={"k8sense": kubectl_server},        # Phase 1
     allowed_tools=["mcp__k8sense__kubectl",
-                   "mcp__k8sense__prometheus"],     # +prometheus in Phase 2
+                   "mcp__k8sense__prometheus_query"],     # +prometheus in Phase 2
     agents={                                        # NEW in Phase 2
         "event_triager":     event_triager.DEFINITION,
         "log_investigator":  log_investigator.DEFINITION,
@@ -135,7 +135,7 @@ Each lives in its own module and exports a `DEFINITION: AgentDefinition`. All th
     - `node_load1` — node load average
     - `kube_pod_container_status_restarts_total` — restart counter
   - If Prometheus is unreachable, fall back to `kubectl top` and say so in the answer
-- **Tools** (overrides the default): `tools=["mcp__k8sense__kubectl", "mcp__k8sense__prometheus"]`.
+- **Tools** (overrides the default): `tools=["mcp__k8sense__kubectl", "mcp__k8sense__prometheus_query"]`.
 
 ### 2. The Prometheus tool
 
