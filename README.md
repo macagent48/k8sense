@@ -9,10 +9,16 @@ A Claude Agent SDK SRE for homelab k3s clusters.
 ## Install (dev)
 
 ```bash
+# With pip:
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env  # then add your ANTHROPIC_API_KEY
+
+# Or with uv:
+uv sync --extra dev
+
+# Then in either case:
+cp .env.example .env  # add your ANTHROPIC_API_KEY
 ```
 
 ## Usage
