@@ -51,3 +51,21 @@ def test_error_prints_message(captured):
     renderer.error("max tool calls exceeded")
     output = console.export_text()
     assert "max tool calls exceeded" in output
+
+
+def test_tool_result_non_zero_exit_uses_yellow_border(captured):
+    renderer, console = captured
+    renderer.tool_result(stdout="", stderr="permission denied", exit_code=1)
+    # We can't assert on ANSI styles via export_text(), but we can assert the
+    # exit code and stderr show up in the panel body.
+    output = console.export_text()
+    assert "exit_code=1" in output
+    assert "permission denied" in output
+
+
+def test_tool_call_falls_back_to_repr_for_unknown_tool(captured):
+    renderer, console = captured
+    renderer.tool_call("some_other_tool", {"foo": "bar", "n": 3})
+    output = console.export_text()
+    assert "some_other_tool" in output
+    assert "'foo': 'bar'" in output  # part of the dict repr

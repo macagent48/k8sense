@@ -26,7 +26,7 @@ class Renderer:
         # Render kubectl args inline for readability; other tools fall back to repr.
         if name == "kubectl":
             args = arguments.get("args") or []
-            command = "kubectl " + " ".join(args)
+            command = "kubectl" + (" " + " ".join(args) if args else "")
         else:
             command = f"{name}({arguments!r})"
         self.console.print(Text(f"→ {command}", style="cyan"))
