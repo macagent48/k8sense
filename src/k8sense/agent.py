@@ -32,7 +32,7 @@ DEFAULT_MODEL = "claude-sonnet-4-6"
 
 _EXIT_CODE_RE = re.compile(r"^exit_code=(-?\d+)", re.MULTILINE)
 
-SUBAGENT_DISPATCH_TOOL_NAME = "Task"  # SDK names the dispatch primitive "Task"
+SUBAGENT_DISPATCH_TOOL_NAME = "Agent"  # SDK names the dispatch primitive "Agent"
 _BRIEF_MAX_LEN = 120
 
 

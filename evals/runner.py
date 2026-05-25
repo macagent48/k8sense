@@ -54,7 +54,7 @@ def score_fingerprints(case: EvalCase, result: EvalResult) -> tuple[bool, list[s
                 failures.append(f"no tool call args contained '{value}'")
         elif kind == "subagent_called":
             ok = any(
-                tc.get("name") == "Task"
+                tc.get("name") == "Agent"
                 and ((tc.get("input") or {}).get("subagent_type") == value)
                 for tc in result.tool_calls
             )

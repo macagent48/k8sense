@@ -204,7 +204,7 @@ def test_subagent_called_passes_when_dispatch_recorded():
     result = _result(
         tool_calls=[
             {
-                "name": "Task",
+                "name": "Agent",
                 "input": {"subagent_type": "log_investigator", "description": "x"},
             },
         ]
@@ -242,7 +242,7 @@ def test_subagent_called_fails_when_different_subagent_dispatched():
     result = _result(
         tool_calls=[
             {
-                "name": "Task",
+                "name": "Agent",
                 "input": {"subagent_type": "event_triager", "description": "x"},
             },
         ]
@@ -260,6 +260,6 @@ def test_subagent_called_handles_missing_input_safely():
         ],
     )
     # A malformed tool_call with no input shouldn't crash the scorer
-    result = _result(tool_calls=[{"name": "Task"}])
+    result = _result(tool_calls=[{"name": "Agent"}])
     passes, failures = score_fingerprints(case, result)
     assert passes is False
