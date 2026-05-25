@@ -110,9 +110,9 @@ async def _run_one_case(case: EvalCase) -> EvalResult:
 
 
 async def _amain() -> int:
-    import argparse as _argparse
+    import argparse
 
-    parser = _argparse.ArgumentParser(description="Run k8sense evals")
+    parser = argparse.ArgumentParser(description="Run k8sense evals")
     parser.add_argument("--dataset", default="evals/dataset.jsonl")
     parser.add_argument("--report", default="evals/report.md")
     args = parser.parse_args()
@@ -123,8 +123,13 @@ async def _amain() -> int:
     passed = 0
 
     for case in cases:
-        result = await _run_one_case(case)
-        ok, failures = score_fingerprints(case, result)
+        try:
+            result = await _run_one_case(case)
+        except Exception as exc:
+            ok = False
+            failures = [f"runner crashed: {type(exc).__name__}: {exc}"]
+        else:
+            ok, failures = score_fingerprints(case, result)
         passed += int(ok)
         rows.append(
             f"| {case.id} | {'✓' if ok else '✗'} | "
