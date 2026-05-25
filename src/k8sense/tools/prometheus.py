@@ -31,3 +31,52 @@ def _parse_lookback(lookback: str) -> int:
 def _compute_step(lookback_seconds: int) -> int:
     """Step size in seconds — floor at 15s, ensures ≤ 60 buckets per range query."""
     return max(15, lookback_seconds // 60)
+
+
+def _render_metric(metric: dict) -> str:
+    """Render a metric label dict as a Prometheus-style string."""
+    if not metric:
+        return "{}"
+    name = metric.get("__name__", "")
+    other = {k: v for k, v in metric.items() if k != "__name__"}
+    if not other:
+        return name
+    pairs = ",".join(f'{k}="{v}"' for k, v in other.items())
+    return f"{name}{{{pairs}}}"
+
+
+def _format_result(data: dict) -> str:
+    """Format a PromQL response data block as readable text."""
+    result_type = data.get("resultType", "")
+    results = data.get("result", [])
+    lines = [f"resultType={result_type}", f"count={len(results)}"]
+
+    if result_type == "vector":
+        for r in results:
+            metric = r.get("metric", {})
+            value = r.get("value", [None, None])
+            lines.append(f"{_render_metric(metric)} → {value[1]} @ {value[0]}")
+    elif result_type == "matrix":
+        for r in results:
+            metric = r.get("metric", {})
+            values = r.get("values", [])
+            sample = values[:5]
+            lines.append(
+                f"{_render_metric(metric)} → {len(values)} points, first 5: {sample}"
+            )
+    else:
+        for r in results:
+            lines.append(str(r))
+
+    truncated = False
+    if len(lines) > MAX_RESULT_LINES:
+        lines = lines[:MAX_RESULT_LINES]
+        truncated = True
+
+    joined = "\n".join(lines)
+    if len(joined) > MAX_RESULT_CHARS:
+        joined = joined[:MAX_RESULT_CHARS]
+        truncated = True
+    if truncated:
+        joined += "\n… (truncated)"
+    return joined
