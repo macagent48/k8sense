@@ -195,4 +195,4 @@ tests/
 
 ## License
 
-Personal learning project — no public license assigned yet.
+[MIT](LICENSE) — feel free to learn from, fork, or build on this curriculum.
