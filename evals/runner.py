@@ -40,7 +40,9 @@ def score_fingerprints(case: EvalCase, result: EvalResult) -> tuple[bool, list[s
             if not matched:
                 failures.append(f"regex '{value}' did not match final text")
         elif kind == "tool_called":
-            if not any(tc.get("name") == value for tc in result.tool_calls):
+            # Substring match because SDK MCP tools surface as "mcp__<server>__<tool>",
+            # not the short name. Dataset entries use short names like "kubectl".
+            if not any(value in (tc.get("name") or "") for tc in result.tool_calls):
                 failures.append(f"tool '{value}' was never called")
         elif kind == "tool_args_contains":
             ok = any(

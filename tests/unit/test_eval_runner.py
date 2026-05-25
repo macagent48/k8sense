@@ -173,3 +173,21 @@ def test_empty_fingerprints_list_passes_trivially():
     passes, failures = score_fingerprints(case, result)
     assert passes is True
     assert failures == []
+
+
+def test_tool_called_matches_mcp_prefixed_name():
+    """SDK emits 'mcp__<server>__<tool>'; a dataset fingerprint of just 'kubectl' must match."""
+    case = EvalCase(
+        id="t13",
+        question="?",
+        fingerprints=[
+            {"type": "tool_called", "value": "kubectl"},
+        ],
+    )
+    result = _result(
+        tool_calls=[
+            {"name": "mcp__k8sense__kubectl", "input": {"args": ["get", "pods"]}},
+        ]
+    )
+    passes, _ = score_fingerprints(case, result)
+    assert passes is True

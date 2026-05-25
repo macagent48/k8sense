@@ -69,3 +69,15 @@ def test_tool_call_falls_back_to_repr_for_unknown_tool(captured):
     output = console.export_text()
     assert "some_other_tool" in output
     assert "'foo': 'bar'" in output  # part of the dict repr
+
+
+def test_tool_call_renders_mcp_prefixed_kubectl_inline(captured):
+    renderer, console = captured
+    renderer.tool_call(
+        "mcp__k8sense__kubectl", {"args": ["get", "pods", "-n", "argocd"]}
+    )
+    output = console.export_text()
+    assert "kubectl" in output
+    assert "get pods -n argocd" in output
+    # And critically, the repr-fallback should NOT have fired
+    assert "mcp__k8sense__kubectl(" not in output

@@ -43,7 +43,7 @@ cat evals/report.md
 ## Run the test suite
 
 ```bash
-pytest                                  # unit + integration (no API spend)
+pytest                                  # unit tests (no API spend)
 K8SENSE_ALLOW_API=1 pytest -m smoke     # end-to-end against real cluster (charges API)
 ```
 
@@ -52,7 +52,7 @@ K8SENSE_ALLOW_API=1 pytest -m smoke     # end-to-end against real cluster (charg
 - `src/k8sense/cli.py` — argparse entrypoint, `ask` and `doctor` subcommands.
 - `src/k8sense/agent.py` — assembles `ClaudeAgentOptions`, drives the streaming receive loop.
 - `src/k8sense/tools/kubectl.py` — single read-only kubectl tool with verb allowlist.
-- `src/k8sense/prompts/system.py` — system prompt + cached topology snapshot.
+- `src/k8sense/prompts/system.py` — system prompt + startup topology snapshot.
 - `src/k8sense/render.py` — rich-based output rendering.
 - `evals/` — fingerprint-based eval harness.
 - `tests/` — unit, integration, smoke layers.

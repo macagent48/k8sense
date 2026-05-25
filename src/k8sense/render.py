@@ -24,7 +24,8 @@ class Renderer:
 
     def tool_call(self, name: str, arguments: dict[str, Any]) -> None:
         # Render kubectl args inline for readability; other tools fall back to repr.
-        if name == "kubectl":
+        # SDK emits MCP-qualified names like "mcp__k8sense__kubectl"; accept both.
+        if name == "kubectl" or name.endswith("__kubectl"):
             args = arguments.get("args") or []
             command = "kubectl" + (" " + " ".join(args) if args else "")
         else:
