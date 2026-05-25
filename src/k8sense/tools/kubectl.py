@@ -73,24 +73,33 @@ async def run_kubectl(
 from claude_agent_sdk import tool  # noqa: E402
 
 
-async def kubectl_tool(input_data: dict[str, Any]) -> dict[str, Any]:
-    """Async handler: callable directly in tests and registered via kubectl_sdk_tool."""
+async def kubectl_handler(input_data: dict[str, Any]) -> dict[str, Any]:
+    """Plain async handler for the kubectl SDK tool.
+
+    Exists as a separate symbol because the SDK's `tool()` returns a non-callable
+    SdkMcpTool dataclass; we keep the handler available for direct invocation in
+    tests and for any future internal callers.
+    """
     args = input_data.get("args") or []
     result = await run_kubectl(args)
-    text = (
-        f"$ kubectl {' '.join(args) if args else '<no args>'}\n"
-        f"exit_code={result['exit_code']}\n"
-        f"--- stdout ---\n{result['stdout']}\n"
-        f"--- stderr ---\n{result['stderr']}"
-    )
+    parts = [
+        f"$ kubectl {' '.join(args) if args else '<no args>'}",
+        f"exit_code={result['exit_code']}",
+        f"--- stdout ---\n{result['stdout']}",
+    ]
+    if result["stderr"]:
+        parts.append(f"--- stderr ---\n{result['stderr']}")
+    text = "\n".join(parts)
     return {"content": [{"type": "text", "text": text}]}
 
 
 # SdkMcpTool instance for use with create_sdk_mcp_server()
-kubectl_sdk_tool = tool(
-    "kubectl",
-    "Run a READ-ONLY kubectl command against the homelab-k3s cluster. "
-    "Allowed verbs: get, describe, logs, top, events, version. "
-    "Returns stdout, stderr, and exit_code.",
-    {"args": list[str]},
-)(kubectl_tool)
+kubectl_tool = tool(
+    name="kubectl",
+    description=(
+        "Run a READ-ONLY kubectl command against the homelab-k3s cluster. "
+        "Allowed verbs: get, describe, logs, top, events, version. "
+        "Returns stdout, stderr, and exit_code."
+    ),
+    input_schema={"args": list[str]},
+)(kubectl_handler)
