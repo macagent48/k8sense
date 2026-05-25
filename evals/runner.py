@@ -52,6 +52,14 @@ def score_fingerprints(case: EvalCase, result: EvalResult) -> tuple[bool, list[s
             )
             if not ok:
                 failures.append(f"no tool call args contained '{value}'")
+        elif kind == "subagent_called":
+            ok = any(
+                tc.get("name") == "Task"
+                and ((tc.get("input") or {}).get("subagent_type") == value)
+                for tc in result.tool_calls
+            )
+            if not ok:
+                failures.append(f"subagent '{value}' was never dispatched")
         else:
             failures.append(f"unknown fingerprint type: {kind}")
     return len(failures) == 0, failures

@@ -191,3 +191,75 @@ def test_tool_called_matches_mcp_prefixed_name():
     )
     passes, _ = score_fingerprints(case, result)
     assert passes is True
+
+
+def test_subagent_called_passes_when_dispatch_recorded():
+    case = EvalCase(
+        id="t14",
+        question="?",
+        fingerprints=[
+            {"type": "subagent_called", "value": "log_investigator"},
+        ],
+    )
+    result = _result(
+        tool_calls=[
+            {
+                "name": "Task",
+                "input": {"subagent_type": "log_investigator", "description": "x"},
+            },
+        ]
+    )
+    passes, _ = score_fingerprints(case, result)
+    assert passes is True
+
+
+def test_subagent_called_fails_when_no_dispatch():
+    case = EvalCase(
+        id="t15",
+        question="?",
+        fingerprints=[
+            {"type": "subagent_called", "value": "metrics_analyst"},
+        ],
+    )
+    result = _result(
+        tool_calls=[
+            {"name": "mcp__k8sense__kubectl", "input": {"args": ["get", "pods"]}},
+        ]
+    )
+    passes, failures = score_fingerprints(case, result)
+    assert passes is False
+    assert "subagent 'metrics_analyst'" in failures[0]
+
+
+def test_subagent_called_fails_when_different_subagent_dispatched():
+    case = EvalCase(
+        id="t16",
+        question="?",
+        fingerprints=[
+            {"type": "subagent_called", "value": "log_investigator"},
+        ],
+    )
+    result = _result(
+        tool_calls=[
+            {
+                "name": "Task",
+                "input": {"subagent_type": "event_triager", "description": "x"},
+            },
+        ]
+    )
+    passes, failures = score_fingerprints(case, result)
+    assert passes is False
+
+
+def test_subagent_called_handles_missing_input_safely():
+    case = EvalCase(
+        id="t17",
+        question="?",
+        fingerprints=[
+            {"type": "subagent_called", "value": "event_triager"},
+        ],
+    )
+    # A malformed tool_call with no input shouldn't crash the scorer
+    result = _result(tool_calls=[{"name": "Task"}])
+    passes, failures = score_fingerprints(case, result)
+    assert passes is False
