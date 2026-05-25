@@ -178,3 +178,40 @@ async def test_range_query_against_real_prometheus(monkeypatch):
     result = await run_prometheus_query("up", lookback="5m")
     assert result["exit_code"] == 0, result["stderr"]
     assert "resultType=matrix" in result["stdout"]
+
+
+@pytest.mark.asyncio
+async def test_run_query_returns_error_when_response_is_not_json(monkeypatch):
+    """A 200 response with a non-JSON body must not crash the envelope contract."""
+    # We can't easily get Prometheus itself to return non-JSON, but we can simulate
+    # a proxy that returns HTML by pointing K8SENSE_PROM_URL at a small server.
+    # The simplest way without bringing in mocks: monkeypatch httpx.AsyncClient.get
+    # via a class replacement that returns a fake 200 + non-JSON body.
+    from k8sense.tools import prometheus as prom_mod
+
+    class _FakeResponse:
+        status_code = 200
+        text = "<html>not prometheus</html>"
+
+        def json(self):
+            raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    monkeypatch.setattr(prom_mod.httpx, "AsyncClient", _FakeClient)
+
+    result = await prom_mod.run_prometheus_query("up")
+    assert result["exit_code"] == -1
+    assert "non-JSON" in result["stderr"]
+    assert "<html>" in result["stderr"]

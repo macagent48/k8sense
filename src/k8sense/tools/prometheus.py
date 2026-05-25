@@ -136,7 +136,14 @@ async def run_prometheus_query(
             "exit_code": -1,
         }
 
-    body = response.json()
+    try:
+        body = response.json()
+    except ValueError:
+        return {
+            "stdout": "",
+            "stderr": f"prometheus returned non-JSON on 200: {response.text[:200]}",
+            "exit_code": -1,
+        }
     if body.get("status") != "success":
         err = body.get("error", "unknown error")
         return {"stdout": "", "stderr": f"promql error: {err}", "exit_code": 1}
