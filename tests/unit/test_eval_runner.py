@@ -1,6 +1,5 @@
 """Fingerprint scoring for eval results."""
 
-
 from evals.runner import EvalCase, EvalResult, score_fingerprints
 
 
@@ -95,3 +94,82 @@ def test_all_fingerprints_required():
     assert passes is False
     assert len(failures) == 1
     assert "longhorn" in failures[0]
+
+
+def test_unknown_fingerprint_type_produces_failure_message():
+    case = EvalCase(
+        id="t7",
+        question="?",
+        fingerprints=[
+            {"type": "webhook", "value": "anything"},
+        ],
+    )
+    result = _result(final_text="some content")
+    passes, failures = score_fingerprints(case, result)
+    assert passes is False
+    assert "unknown fingerprint type: webhook" in failures[0]
+
+
+def test_unknown_fingerprint_type_without_value_does_not_crash():
+    case = EvalCase(
+        id="t8",
+        question="?",
+        fingerprints=[
+            {"type": "webhook"},  # missing 'value' key
+        ],
+    )
+    result = _result(final_text="some content")
+    # Must not raise; must produce a failure
+    passes, failures = score_fingerprints(case, result)
+    assert passes is False
+    assert "unknown fingerprint type" in failures[0]
+
+
+def test_malformed_regex_produces_failure_message_not_crash():
+    case = EvalCase(
+        id="t9",
+        question="?",
+        fingerprints=[
+            {"type": "regex", "value": "[unclosed"},
+        ],
+    )
+    result = _result(final_text="anything")
+    passes, failures = score_fingerprints(case, result)
+    assert passes is False
+    assert "regex '[unclosed' is invalid" in failures[0]
+
+
+def test_regex_failure_when_pattern_not_found():
+    case = EvalCase(
+        id="t10",
+        question="?",
+        fingerprints=[
+            {"type": "regex", "value": r"\d+ pods?"},
+        ],
+    )
+    result = _result(final_text="no numbers here")
+    passes, failures = score_fingerprints(case, result)
+    assert passes is False
+    assert "did not match" in failures[0]
+
+
+def test_tool_called_failure_when_tool_never_invoked():
+    case = EvalCase(
+        id="t11",
+        question="?",
+        fingerprints=[
+            {"type": "tool_called", "value": "kubectl"},
+        ],
+    )
+    result = _result(tool_calls=[])
+    passes, failures = score_fingerprints(case, result)
+    assert passes is False
+    assert "tool 'kubectl' was never called" in failures[0]
+
+
+def test_empty_fingerprints_list_passes_trivially():
+    case = EvalCase(id="t12", question="?", fingerprints=[])
+    result = _result(final_text="anything")
+    passes, failures = score_fingerprints(case, result)
+    assert passes is True
+    assert failures == []

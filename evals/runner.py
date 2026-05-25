@@ -27,12 +27,17 @@ def score_fingerprints(case: EvalCase, result: EvalResult) -> tuple[bool, list[s
     failures: list[str] = []
     for fp in case.fingerprints:
         kind = fp["type"]
-        value = fp["value"]
+        value = fp.get("value")
         if kind == "substring":
             if value not in result.final_text:
                 failures.append(f"substring '{value}' not found in final text")
         elif kind == "regex":
-            if not re.search(value, result.final_text):
+            try:
+                matched = re.search(value, result.final_text) is not None
+            except re.error as exc:
+                failures.append(f"regex '{value}' is invalid: {exc}")
+                continue
+            if not matched:
                 failures.append(f"regex '{value}' did not match final text")
         elif kind == "tool_called":
             if not any(tc.get("name") == value for tc in result.tool_calls):
@@ -52,7 +57,7 @@ def score_fingerprints(case: EvalCase, result: EvalResult) -> tuple[bool, list[s
 
 def load_dataset(path: Path) -> list[EvalCase]:
     cases: list[EvalCase] = []
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
