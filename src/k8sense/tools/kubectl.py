@@ -66,3 +66,31 @@ async def run_kubectl(
         "stderr": stderr_b.decode("utf-8", errors="replace"),
         "exit_code": proc.returncode if proc.returncode is not None else -1,
     }
+
+
+# --- SDK wrapper ---------------------------------------------------------
+
+from claude_agent_sdk import tool  # noqa: E402
+
+
+async def kubectl_tool(input_data: dict[str, Any]) -> dict[str, Any]:
+    """Async handler: callable directly in tests and registered via kubectl_sdk_tool."""
+    args = input_data.get("args") or []
+    result = await run_kubectl(args)
+    text = (
+        f"$ kubectl {' '.join(args) if args else '<no args>'}\n"
+        f"exit_code={result['exit_code']}\n"
+        f"--- stdout ---\n{result['stdout']}\n"
+        f"--- stderr ---\n{result['stderr']}"
+    )
+    return {"content": [{"type": "text", "text": text}]}
+
+
+# SdkMcpTool instance for use with create_sdk_mcp_server()
+kubectl_sdk_tool = tool(
+    "kubectl",
+    "Run a READ-ONLY kubectl command against the homelab-k3s cluster. "
+    "Allowed verbs: get, describe, logs, top, events, version. "
+    "Returns stdout, stderr, and exit_code.",
+    {"args": list[str]},
+)(kubectl_tool)
