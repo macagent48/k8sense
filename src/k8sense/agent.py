@@ -7,8 +7,13 @@ import re
 from dataclasses import dataclass
 
 from claude_agent_sdk import (
+    AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    ResultMessage,
+    TextBlock,
+    ToolUseBlock,
+    UserMessage,
     create_sdk_mcp_server,
 )
 
@@ -46,6 +51,41 @@ def parse_exit_code(text: str) -> int:
     """
     match = _EXIT_CODE_RE.search(text)
     return int(match.group(1)) if match else 0
+
+
+def parse_handler_envelope(text: str) -> tuple[int, str, str]:
+    """Parse the kubectl_handler envelope into (exit_code, stdout, stderr).
+
+    Format produced by kubectl_handler:
+        $ kubectl <args>
+        exit_code=<n>
+        --- stdout ---
+        <stdout>
+        [--- stderr ---
+        <stderr>]
+
+    Falls back gracefully: if the envelope isn't recognised, returns
+    (0, text, "") so the agent loop never crashes on unexpected content.
+    """
+    exit_code = parse_exit_code(text)
+
+    stdout_marker = "--- stdout ---\n"
+    stderr_marker = "\n--- stderr ---\n"
+
+    stdout = ""
+    stderr = ""
+
+    if stdout_marker in text:
+        after_stdout = text.split(stdout_marker, 1)[1]
+        if stderr_marker in after_stdout:
+            stdout, _, stderr = after_stdout.partition(stderr_marker)
+        else:
+            stdout = after_stdout
+    else:
+        # Not a kubectl_handler envelope — return the whole thing as stdout
+        stdout = text
+
+    return exit_code, stdout.rstrip("\n"), stderr.rstrip("\n")
 
 
 def build_options(
@@ -92,16 +132,6 @@ async def run_ask(
 
 def _dispatch_message(message, renderer: Renderer, budget: ToolBudget) -> bool:
     """Route a streamed message to the renderer. Return False to abort the loop."""
-    # We import block types lazily so that the unit-test suite doesn't choke on a
-    # missing optional symbol; the real types live in claude_agent_sdk.
-    from claude_agent_sdk import (
-        AssistantMessage,
-        ResultMessage,
-        TextBlock,
-        ToolUseBlock,
-        UserMessage,
-    )
-
     if isinstance(message, AssistantMessage):
         for block in message.content:
             if isinstance(block, TextBlock):
@@ -114,15 +144,16 @@ def _dispatch_message(message, renderer: Renderer, budget: ToolBudget) -> bool:
         return True
 
     if isinstance(message, UserMessage):
-        # Tool results come back as UserMessage content. Render the result panel
-        # with the real exit code parsed from the handler's formatted text.
+        # Tool results come back as UserMessage content. Parse the handler
+        # envelope so stdout/stderr are separated and the exit code isn't
+        # rendered twice in the panel.
         for block in getattr(message, "content", []) or []:
             content_block = getattr(block, "content", None)
             if content_block is None:
                 continue
             text = _extract_tool_result_text(content_block)
-            exit_code = parse_exit_code(text)
-            renderer.tool_result(stdout=text, stderr="", exit_code=exit_code)
+            exit_code, stdout, stderr = parse_handler_envelope(text)
+            renderer.tool_result(stdout=stdout, stderr=stderr, exit_code=exit_code)
         return True
 
     if isinstance(message, ResultMessage):

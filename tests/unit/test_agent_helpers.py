@@ -1,6 +1,5 @@
 """Pure helpers in agent.py: options builder, tool-call counter, message dispatch."""
 
-
 from k8sense.agent import (
     MAX_TOOL_CALLS,
     ToolBudget,
@@ -56,3 +55,37 @@ def test_parse_exit_code_extracts_non_zero():
 def test_parse_exit_code_returns_zero_when_missing():
     # If the text doesn't contain exit_code=, assume 0 (don't crash)
     assert parse_exit_code("some unrelated output") == 0
+
+
+from k8sense.agent import parse_handler_envelope  # noqa: E402
+
+
+def test_parse_envelope_extracts_stdout_and_stderr():
+    text = "$ kubectl get pods\nexit_code=0\n--- stdout ---\nNAME   READY\npod-1  1/1\n"
+    exit_code, stdout, stderr = parse_handler_envelope(text)
+    assert exit_code == 0
+    assert "NAME   READY" in stdout
+    assert "pod-1  1/1" in stdout
+    assert stderr == ""
+
+
+def test_parse_envelope_handles_stderr_section():
+    text = (
+        "$ kubectl get pods -n nope\n"
+        "exit_code=1\n"
+        "--- stdout ---\n"
+        "\n"
+        "--- stderr ---\n"
+        "Error: namespace 'nope' not found\n"
+    )
+    exit_code, stdout, stderr = parse_handler_envelope(text)
+    assert exit_code == 1
+    assert "namespace 'nope' not found" in stderr
+
+
+def test_parse_envelope_falls_back_for_unrecognised_text():
+    text = "some unrelated output\nwith multiple lines"
+    exit_code, stdout, stderr = parse_handler_envelope(text)
+    assert exit_code == 0
+    assert "some unrelated output" in stdout
+    assert stderr == ""

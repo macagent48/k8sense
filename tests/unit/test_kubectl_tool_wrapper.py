@@ -28,3 +28,17 @@ async def test_handler_returns_content_block_for_successful_call():
     assert "exit_code=0" in block["text"]
     # On success, stderr is empty so the stderr section should be absent.
     assert "--- stderr ---" not in block["text"]
+
+
+@pytest.mark.asyncio
+async def test_handler_output_format_is_stable_contract():
+    """Pin the kubectl_handler envelope format. Agent's parse_handler_envelope
+    relies on this exact structure: first line is $ kubectl ..., second line is
+    exit_code=N, then --- stdout --- section, then optional --- stderr --- section.
+    """
+    result = await kubectl_handler({"args": ["delete", "pod", "x"]})
+    text = result["content"][0]["text"]
+    lines = text.splitlines()
+    assert lines[0].startswith("$ kubectl ")
+    assert lines[1].startswith("exit_code=")
+    assert "--- stdout ---" in text
