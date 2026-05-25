@@ -19,6 +19,11 @@ from claude_agent_sdk import (
 
 from k8sense.prompts.system import build_system_prompt
 from k8sense.render import Renderer
+from k8sense.subagents import (
+    event_triager_definition,
+    log_investigator_definition,
+    metrics_analyst_definition,
+)
 from k8sense.tools.kubectl import kubectl_tool
 from k8sense.tools.prometheus import prometheus_tool
 
@@ -92,7 +97,7 @@ def parse_handler_envelope(text: str) -> tuple[int, str, str]:
 def build_options(
     system_prompt: str, model_id: str = DEFAULT_MODEL
 ) -> ClaudeAgentOptions:
-    """Construct ClaudeAgentOptions wired with kubectl + prometheus tools."""
+    """Construct ClaudeAgentOptions wired with kubectl + prometheus tools and subagents."""
     server = create_sdk_mcp_server(
         name="k8sense",
         version="0.2.0",
@@ -105,6 +110,11 @@ def build_options(
             "mcp__k8sense__kubectl",
             "mcp__k8sense__prometheus_query",
         ],
+        agents={
+            "event_triager": event_triager_definition,
+            "log_investigator": log_investigator_definition,
+            "metrics_analyst": metrics_analyst_definition,
+        },
         model=model_id,
     )
 

@@ -90,3 +90,19 @@ def test_parse_envelope_falls_back_for_unrecognised_text():
     assert exit_code == 0
     assert "some unrelated output" in stdout
     assert stderr == ""
+
+
+def test_build_options_includes_three_subagents():
+    options = build_options("SYS", model_id="claude-sonnet-4-6")
+    agents = getattr(options, "agents", None)
+    assert agents is not None
+    assert set(agents.keys()) == {
+        "event_triager",
+        "log_investigator",
+        "metrics_analyst",
+    }
+    # Each should be an AgentDefinition
+    from claude_agent_sdk import AgentDefinition
+
+    for name, agent in agents.items():
+        assert isinstance(agent, AgentDefinition), f"{name} is not AgentDefinition"
