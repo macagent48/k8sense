@@ -80,6 +80,56 @@ k8sense/
 
 ---
 
+## Testing Strategy
+
+The project mixes two kinds of code that need fundamentally different testing disciplines. Calling everything "tests" hides the split, so we name it explicitly.
+
+### Deterministic code → strict TDD
+
+Applies to: custom tools, allowlist enforcement, render/formatting, prompt assembly, filter rules (dedup, cooldown, rate limits), journal lookup, signature matching, hook logic, MCP schemas.
+
+Workflow for every unit of deterministic code:
+
+1. **Red** — write a failing test that pins the behaviour ("verb 'delete' is rejected with exit_code -1 and a useful stderr").
+2. **Green** — minimum implementation to make the test pass. No flourishes.
+3. **Refactor** — clean up with the test as a safety net.
+
+We use the `superpowers:test-driven-development` skill to enforce this in the implementation plan — every deterministic step lists its failing test before its implementation step.
+
+**No mocking of `kubectl` or the SDK in these tests.** Allowlist rejection paths can be tested without a cluster. Success paths run against a real cluster's safe namespace (`kube-system`, read-only commands only). Mocked infrastructure tests are a known trap from previous incidents and are not used here.
+
+### LLM behaviour → eval harness, NOT TDD
+
+Applies to: does the agent investigate before concluding, does it dispatch the right subagent, does it propose the right remediation, does it consult memory when relevant.
+
+This is not a TDD candidate. The output depends on a model, not on our code. A test that says `assert "delete pod" in output` is fake confidence — the next prompt tweak silently breaks it.
+
+Instead:
+
+- `evals/dataset.jsonl` defines a curated set of cluster questions, each paired with **expected-answer fingerprints** (substring matches, regex patterns, structural assertions like "calls the `kubectl_get_pods` tool at least once").
+- `evals/runner.py` executes the agent against every question and reports fingerprint pass/fail.
+- The evalset grows phase by phase. Phase 1 starts with ~10 entries; Phase 2 adds multi-source questions; Phase 4 adds remediation-correctness questions.
+- A failing fingerprint blocks the phase merge.
+
+### Integration → recorded fixtures, no API spend in CI
+
+For end-to-end agent flows (`k8sense ask "..."` produces a coherent investigation), we record a small number of real SDK transcripts against the live cluster, version them in `tests/integration/fixtures/`, and replay them in CI. This catches regressions in the assembly without re-billing the API on every commit.
+
+### Smoke → real cluster, manual or scheduled
+
+One end-to-end test per phase, against the live `homelab-k3s`. Not run on every commit. Not blocking by default. Acts as the final reality check before tagging a phase release.
+
+### Summary table
+
+| Layer                      | Discipline                              | Where                |
+| -------------------------- | --------------------------------------- | -------------------- |
+| Deterministic units        | **Strict TDD** (red → green → refactor) | `tests/unit/`        |
+| End-to-end agent flow      | Recorded SDK fixtures, replayed in CI   | `tests/integration/` |
+| LLM reasoning quality      | **Eval harness** (fingerprint matches)  | `evals/`             |
+| Live cluster reality check | Smoke run per phase                     | `tests/smoke/`       |
+
+---
+
 ## Phase 1 — Detailed Design
 
 Phase 1 is where we start coding. It is intentionally the deepest section.
