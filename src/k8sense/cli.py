@@ -84,10 +84,18 @@ def main(argv: list[str] | None = None) -> int:
         return _print_findings(findings, renderer)
 
     if ns.command == "ask":
-        return asyncio.run(run_ask(ns.question, renderer))
+        try:
+            return asyncio.run(run_ask(ns.question, renderer))
+        except KeyboardInterrupt:
+            renderer.error("interrupted")
+            return 130
+        except Exception as exc:
+            # Spec: SDK / network / auth errors bubble up as a one-line error, exit 1.
+            renderer.error(f"{type(exc).__name__}: {exc}")
+            return 1
 
-    parser.error(f"unknown command: {ns.command}")
-    return 2
+    # Unreachable: argparse enforces required=True on subparsers.
+    raise RuntimeError(f"unexpected command: {ns.command}")
 
 
 if __name__ == "__main__":
