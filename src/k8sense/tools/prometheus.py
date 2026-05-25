@@ -153,3 +153,63 @@ async def run_prometheus_query(
         "stderr": "",
         "exit_code": 0,
     }
+
+
+# --- SDK wrapper ---------------------------------------------------------
+
+from claude_agent_sdk import tool  # noqa: E402
+
+
+async def prometheus_handler(input_data: dict[str, Any]) -> dict[str, Any]:
+    """Plain async handler for the Prometheus SDK tool.
+
+    Exists as a separate symbol because the SDK's `tool()` returns a non-callable
+    SdkMcpTool dataclass; we keep the handler available for direct invocation in
+    tests and for any future internal callers. Mirrors the kubectl_handler shape.
+    """
+    query = input_data.get("query") or ""
+    lookback = input_data.get("lookback") or None  # treat empty string as None
+
+    if not query:
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        "$ promql\n"
+                        "exit_code=-1\n"
+                        "--- stdout ---\n\n"
+                        "--- stderr ---\n"
+                        "empty query"
+                    ),
+                }
+            ]
+        }
+
+    result = await run_prometheus_query(query, lookback=lookback)
+    mode = "range" if lookback else "instant"
+    header = f"$ promql {mode} {query!r}" + (
+        f" lookback={lookback}" if lookback else ""
+    )
+    parts = [
+        header,
+        f"exit_code={result['exit_code']}",
+        f"--- stdout ---\n{result['stdout']}",
+    ]
+    if result["stderr"]:
+        parts.append(f"--- stderr ---\n{result['stderr']}")
+    return {"content": [{"type": "text", "text": "\n".join(parts)}]}
+
+
+prometheus_tool = tool(
+    name="prometheus_query",
+    description=(
+        "Query PromQL against the homelab Prometheus instance. "
+        "Pass an instant query as `query` for a current value. For trend / range "
+        "queries, also pass `lookback` (e.g. '5m', '1h', '24h'). Returns metric "
+        "labels and values (truncated for large result sets). Read-only — there "
+        "are no mutating PromQL operations. Examples: `node_load1`, "
+        '`sum(rate(container_cpu_usage_seconds_total{namespace=\\"argocd\\"}[2m])) by (pod)`.'
+    ),
+    input_schema={"query": str, "lookback": str},
+)(prometheus_handler)

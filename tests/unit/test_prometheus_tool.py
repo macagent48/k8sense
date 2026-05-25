@@ -215,3 +215,34 @@ async def test_run_query_returns_error_when_response_is_not_json(monkeypatch):
     assert result["exit_code"] == -1
     assert "non-JSON" in result["stderr"]
     assert "<html>" in result["stderr"]
+
+
+from k8sense.tools.prometheus import prometheus_handler, prometheus_tool  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_handler_returns_envelope_format_for_unreachable(monkeypatch):
+    monkeypatch.setenv("K8SENSE_PROM_URL", "http://127.0.0.1:1")
+    result = await prometheus_handler({"query": "up"})
+    assert "content" in result
+    text = result["content"][0]["text"]
+    assert text.startswith("$ promql ")
+    assert "exit_code=-1" in text
+    assert "--- stdout ---" in text
+    assert "--- stderr ---" in text
+
+
+@pytest.mark.asyncio
+async def test_handler_rejects_empty_query():
+    result = await prometheus_handler({"query": ""})
+    text = result["content"][0]["text"]
+    assert "exit_code=-1" in text
+    assert "empty query" in text
+
+
+def test_prometheus_tool_is_sdkmcptool():
+    # Same two-name pattern as kubectl_handler / kubectl_tool
+    from claude_agent_sdk import SdkMcpTool
+
+    assert isinstance(prometheus_tool, SdkMcpTool)
+    assert prometheus_tool.handler is prometheus_handler
