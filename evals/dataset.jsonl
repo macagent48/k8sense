@@ -1,0 +1,10 @@
+{"id": "ns-list", "question": "List every namespace in the cluster.", "fingerprints": [{"type": "tool_called", "value": "kubectl"}, {"type": "substring", "value": "kube-system"}]}
+{"id": "node-count", "question": "How many nodes does the cluster have?", "fingerprints": [{"type": "tool_called", "value": "kubectl"}, {"type": "regex", "value": "\\d+\\s*nodes?"}]}
+{"id": "cluster-version", "question": "What is the cluster version?", "fingerprints": [{"type": "tool_called", "value": "kubectl"}, {"type": "regex", "value": "v\\d+\\.\\d+\\.\\d+"}]}
+{"id": "argocd-pods", "question": "Are the pods in the argocd namespace healthy?", "fingerprints": [{"type": "tool_args_contains", "value": "argocd"}, {"type": "substring", "value": "argocd"}]}
+{"id": "restart-summary", "question": "Summarise pod restart counts across all namespaces.", "fingerprints": [{"type": "tool_called", "value": "kubectl"}, {"type": "tool_args_contains", "value": "pods"}]}
+{"id": "kube-system-events", "question": "Show recent events in the kube-system namespace.", "fingerprints": [{"type": "tool_args_contains", "value": "events"}, {"type": "tool_args_contains", "value": "kube-system"}]}
+{"id": "longhorn-overview", "question": "What is running in the longhorn namespace?", "fingerprints": [{"type": "tool_args_contains", "value": "longhorn"}]}
+{"id": "pending-pods", "question": "Is anything stuck in Pending state right now?", "fingerprints": [{"type": "tool_called", "value": "kubectl"}, {"type": "tool_args_contains", "value": "pods"}]}
+{"id": "health-summary", "question": "Give me a one-paragraph health summary of the cluster.", "fingerprints": [{"type": "tool_called", "value": "kubectl"}, {"type": "substring", "value": "node"}]}
+{"id": "explain-cluster-slowness", "question": "If the cluster feels slow, what would you check first?", "fingerprints": [{"type": "tool_called", "value": "kubectl"}]}
