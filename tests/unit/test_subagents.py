@@ -93,3 +93,46 @@ def test_log_investigator_has_turn_budget_and_parallel_settings():
     assert LI_DEFINITION.maxTurns == 8
     assert LI_DEFINITION.background is True
     assert LI_DEFINITION.model == "inherit"
+
+
+from k8sense.subagents.metrics_analyst import DEFINITION as MA_DEFINITION  # noqa: E402
+
+
+def test_metrics_analyst_is_agent_definition():
+    assert isinstance(MA_DEFINITION, AgentDefinition)
+
+
+def test_metrics_analyst_description_mentions_resource_usage():
+    desc = MA_DEFINITION.description.lower()
+    assert "cpu" in desc or "memory" in desc or "resource" in desc
+    assert "trend" in desc or "historical" in desc or "prometheus" in desc.lower()
+
+
+def test_metrics_analyst_has_both_kubectl_and_prometheus():
+    assert "mcp__k8sense__kubectl" in MA_DEFINITION.tools
+    assert "mcp__k8sense__prometheus_query" in MA_DEFINITION.tools
+    assert len(MA_DEFINITION.tools) == 2
+
+
+def test_metrics_analyst_prompt_distinguishes_snapshot_vs_trend():
+    prompt = MA_DEFINITION.prompt
+    assert "kubectl top" in prompt
+    assert "prometheus_query" in prompt
+    assert "lookback" in prompt
+
+
+def test_metrics_analyst_prompt_includes_promql_examples():
+    prompt = MA_DEFINITION.prompt
+    assert "container_cpu_usage_seconds_total" in prompt
+    assert "container_memory_working_set_bytes" in prompt
+
+
+def test_metrics_analyst_prompt_explains_prometheus_fallback():
+    prompt = MA_DEFINITION.prompt.lower()
+    assert "unreachable" in prompt or "fall back" in prompt or "fallback" in prompt
+
+
+def test_metrics_analyst_has_turn_budget_and_parallel_settings():
+    assert MA_DEFINITION.maxTurns == 8
+    assert MA_DEFINITION.background is True
+    assert MA_DEFINITION.model == "inherit"
