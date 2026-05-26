@@ -197,6 +197,12 @@ def decide(
     read-only verb     allow         allow         allow
     allowlisted mut    deny          propose       allow
     other mutation     deny          propose       deny
+
+    Note (Phase 4.1): Propose mode surfaces ALL mutations, not just allowlisted
+    ones. The semantic is "show me what you'd do," so non-allowlisted mutations
+    also fire `on_propose` and get denied with a clear reason. Originally the
+    table said `deny` for non-allowlisted in propose mode; the live behaviour
+    is `propose`.
     """
     if is_read_only(invocation.verb):
         return Decision(behaviour="allow", message="read-only verb")

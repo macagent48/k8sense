@@ -1,6 +1,5 @@
 """memory.journal: append, load, tiered similarity lookup, prompt formatting."""
 
-
 import pytest
 
 from k8sense.memory.journal import (
@@ -10,6 +9,11 @@ from k8sense.memory.journal import (
     load_all,
 )
 from k8sense.memory.signature import Signature
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -32,7 +36,8 @@ def test_append_entry_creates_directory_and_file(journal_path):
         tool_calls=[],
         tool_results=[],
         signature=sig,
-        actions_taken=[],
+        mutations_attempted=[],
+        mutations_executed=[],
         mode="readonly",
     )
     assert journal_path.exists()
@@ -46,6 +51,33 @@ def test_append_entry_creates_directory_and_file(journal_path):
     }
     assert entries[0]["mode"] == "readonly"
     assert "timestamp" in entries[0]
+    assert "mutations_attempted" in entries[0]
+    assert "mutations_executed" in entries[0]
+    # actions_taken should mirror mutations_executed for backwards compat
+    assert entries[0]["actions_taken"] == entries[0]["mutations_executed"]
+
+
+def test_append_entry_mutations_attempted_vs_executed(journal_path):
+    """mutations_attempted and mutations_executed are stored independently."""
+    sig = Signature(kind="Pod", namespace="default", name="pod-a", reason="OOMKilled")
+    attempted = ["kubectl delete pod pod-a -n default", "kubectl cordon node-1"]
+    executed = ["kubectl delete pod pod-a -n default"]
+    append_entry(
+        question="fix it",
+        final_text="done",
+        tool_calls=[],
+        tool_results=[],
+        signature=sig,
+        mutations_attempted=attempted,
+        mutations_executed=executed,
+        mode="auto-safe",
+    )
+    entries = load_all()
+    assert len(entries) == 1
+    assert entries[0]["mutations_attempted"] == attempted
+    assert entries[0]["mutations_executed"] == executed
+    # actions_taken is a backwards-compat copy of mutations_executed
+    assert entries[0]["actions_taken"] == executed
 
 
 def test_load_all_skips_malformed_lines(journal_path, tmp_path):
@@ -129,3 +161,17 @@ def test_format_for_prompt_renders_markdown_block():
     assert "Prior incidents" in text
     assert "OOMKilled" in text
     assert "argocd" in text
+
+
+def test_find_similar_respects_since_filter():
+    from datetime import datetime, timezone
+
+    entries = [
+        _entry("Pod", "argocd", "x", "OOMKilled", "2026-01-01T00:00:00+00:00"),
+        _entry("Pod", "argocd", "x", "OOMKilled", "2026-06-01T00:00:00+00:00"),
+    ]
+    sig = Signature(kind="Pod", namespace="argocd", name="x", reason="OOMKilled")
+    cutoff = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    result = find_similar(sig, entries, since=cutoff)
+    assert len(result) == 1
+    assert result[0]["timestamp"].startswith("2026-06-01")

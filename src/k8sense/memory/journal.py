@@ -19,12 +19,19 @@ def append_entry(
     tool_calls: list[dict],
     tool_results: list[dict],
     signature: Signature,
-    actions_taken: list[str],
+    mutations_attempted: list[str],
+    mutations_executed: list[str],
     mode: str,
     severity: str = "info",
+    # Deprecated: kept for call-sites that still pass actions_taken by keyword.
+    actions_taken: list[str] | None = None,
 ) -> None:
     """Append one investigation to the journal. Idempotent in directory creation."""
     JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
+    # actions_taken is kept as a backwards-compat alias for mutations_executed.
+    resolved_actions_taken = (
+        actions_taken if actions_taken is not None else mutations_executed
+    )
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "question": question,
@@ -38,7 +45,9 @@ def append_entry(
             "name": signature.name,
             "reason": signature.reason,
         },
-        "actions_taken": actions_taken,
+        "mutations_attempted": mutations_attempted,
+        "mutations_executed": mutations_executed,
+        "actions_taken": resolved_actions_taken,
         "mode": mode,
         "severity": severity,
     }
@@ -67,15 +76,22 @@ def find_similar(
     signature: Signature,
     entries: list[dict[str, Any]],
     limit: int = 5,
+    since: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """Tiered lookup. Up to `limit` entries, most recent first within each tier.
 
     Tier 1: exact (kind, namespace, name, reason)
     Tier 2: (kind, namespace, reason) — ignore name
     Tier 3: (kind, reason)             — ignore namespace + name
+
+    Optional `since` filters out entries older than that timestamp before the
+    tiered lookup runs.
     """
     if signature.is_empty():
         return []
+    if since is not None:
+        since_iso = since.isoformat()
+        entries = [e for e in entries if e.get("timestamp", "") >= since_iso]
 
     matched_indices: set[int] = set()
     out: list[dict[str, Any]] = []

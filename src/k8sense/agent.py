@@ -192,7 +192,8 @@ async def run_ask(
     captured_tool_calls: list[dict] = []
     captured_tool_results: list[dict] = []
     final_text_parts: list[str] = []
-    actions_taken: list[str] = []
+    mutations_attempted: list[str] = []
+    mutations_executed: list[str] = []
 
     async with ClaudeSDKClient(options=options) as client:
         await client.query(augmented_question)
@@ -204,7 +205,8 @@ async def run_ask(
                 captured_tool_calls,
                 captured_tool_results,
                 final_text_parts,
-                actions_taken,
+                mutations_attempted,
+                mutations_executed,
             )
             if not should_continue:
                 return 1
@@ -222,7 +224,8 @@ async def run_ask(
             tool_calls=captured_tool_calls,
             tool_results=captured_tool_results,
             signature=signature,
-            actions_taken=actions_taken,
+            mutations_attempted=mutations_attempted,
+            mutations_executed=mutations_executed,
             mode=mode.value,
         )
     except OSError as exc:
@@ -231,12 +234,31 @@ async def run_ask(
     return 0
 
 
+_DENIED_SIGNALS = frozenset({"Proposed", "blocked", "deny", "permissionDecision"})
+
+
+def _is_denied_result(text: str) -> bool:
+    """Heuristic: return True if the tool result text signals the call was blocked.
+
+    Looks for substrings produced by the hook when it intercepts a mutation:
+    "Proposed (not executed)", "blocked", "deny", "permissionDecision".
+    A result that contains none of these is assumed to have actually run.
+    """
+    lower = text.lower()
+    return (
+        "proposed" in lower
+        or "blocked" in lower
+        or "deny" in lower
+        or "permissiondecision" in lower
+    )
+
+
 def _dispatch_message(message, renderer: Renderer, budget: ToolBudget) -> bool:
     """Route a streamed message to the renderer. Return False to abort the loop.
 
     This version is kept for compatibility with the eval runner (doesn't capture).
     """
-    return _dispatch_message_with_capture(message, renderer, budget, [], [], [], [])
+    return _dispatch_message_with_capture(message, renderer, budget, [], [], [], [], [])
 
 
 def _dispatch_message_with_capture(
@@ -246,9 +268,14 @@ def _dispatch_message_with_capture(
     captured_tool_calls: list[dict],
     captured_tool_results: list[dict],
     final_text_parts: list[str],
-    actions_taken: list[str],
+    mutations_attempted_out: list[str],
+    mutations_executed_out: list[str],
 ) -> bool:
     """Route a streamed message to the renderer and capture data for the journal.
+
+    Tracks mutations_attempted (every mutation verb the agent tried to call) and
+    mutations_executed (only those whose tool result did not contain a deny/block
+    signal from the hook).
 
     Return False to abort the loop.
     """
@@ -269,11 +296,11 @@ def _dispatch_message_with_capture(
                     captured_tool_calls.append(
                         {"name": block.name, "input": block.input}
                     )
-                    # Track kubectl mutation verbs for the journal
+                    # Track kubectl mutation attempts for the journal
                     if block.name == "mcp__k8sense__kubectl":
                         args = (block.input or {}).get("args", [])
                         if args and args[0] in _KUBECTL_MUTATION_VERBS:
-                            actions_taken.append("kubectl " + " ".join(args))
+                            mutations_attempted_out.append("kubectl " + " ".join(args))
         return True
 
     if isinstance(message, UserMessage):
@@ -288,6 +315,19 @@ def _dispatch_message_with_capture(
             exit_code, stdout, stderr = parse_handler_envelope(text)
             renderer.tool_result(stdout=stdout, stderr=stderr, exit_code=exit_code)
             captured_tool_results.append({"text": text})
+            # Promote the most recent attempted mutation to executed if the
+            # result doesn't contain a deny/block signal from the hook.
+            # Heuristic: pair by position — the last attempted command that
+            # hasn't yet been resolved gets promoted when this result arrives.
+            if mutations_attempted_out and not _is_denied_result(text):
+                # Only promote if this result looks like a kubectl mutation result
+                # (contains exit_code line or stdout from kubectl_handler).
+                if "exit_code=" in text or stdout:
+                    # Find the first unresolved attempt (simple FIFO heuristic)
+                    pending = len(mutations_attempted_out) - len(mutations_executed_out)
+                    if pending > 0:
+                        cmd = mutations_attempted_out[len(mutations_executed_out)]
+                        mutations_executed_out.append(cmd)
         return True
 
     if isinstance(message, ResultMessage):
