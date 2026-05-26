@@ -2,11 +2,12 @@
 
 A Claude Agent SDK-powered SRE for the homelab-k3s Kubernetes cluster. The codebase is structured as a **staged curriculum** — each phase adds one Agent SDK concept and ships standalone. See [the design spec](docs/superpowers/specs/2026-05-25-k8sense-design.md) for the full 5-phase roadmap.
 
-| Phase | Tag                                                   | Capability                                             | Concepts introduced                                         |
-| ----- | ----------------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------- |
-| **1** | [`phase-1`](#phase-1--one-shot-investigator)          | `k8sense ask` — single agent investigates with kubectl | Agent loop, custom tools, streaming, eval harness           |
-| **2** | [`phase-2`](#phase-2--parallel-subagents--prometheus) | Parallel subagent dispatch + Prometheus tool           | `AgentDefinition`, `background=True`, multi-tool MCP server |
-| 3-5   | —                                                     | MCP server, hooks/memory, sentinel daemon              | (See spec.)                                                 |
+| Phase | Tag                                                   | Capability                                             | Concepts introduced                                          |
+| ----- | ----------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------ |
+| **1** | [`phase-1`](#phase-1--one-shot-investigator)          | `k8sense ask` — single agent investigates with kubectl | Agent loop, custom tools, streaming, eval harness            |
+| **2** | [`phase-2`](#phase-2--parallel-subagents--prometheus) | Parallel subagent dispatch + Prometheus tool           | `AgentDefinition`, `background=True`, multi-tool MCP server  |
+| **3** | [`phase-3`](#phase-3--mcp-server)                     | `k8sense mcp` stdio server — Claude Code can attach    | MCP `Server`, tools/resources/prompts, Pydantic JSON Schemas |
+| 4-5   | —                                                     | Hooks/memory, sentinel daemon                          | (See spec.)                                                  |
 
 ---
 
@@ -147,6 +148,47 @@ If Prometheus is unreachable, `metrics_analyst` automatically falls back to `kub
 
 ---
 
+## Phase 3 — MCP server
+
+Phase 3 exposes k8sense as a **stdio MCP server**: the same tools, plus three live cluster resources and three workflow prompts, become available inside Claude Code (or any other MCP client). The existing `k8sense ask` flow stays in-process for speed; both transports share `tools/registry.py` so behaviour stays consistent.
+
+### What gets exposed
+
+| Kind      | Names                                                                                          |
+| --------- | ---------------------------------------------------------------------------------------------- |
+| Tools     | `kubectl`, `prometheus_query` (with Pydantic JSON Schemas)                                     |
+| Resources | `mcp://k8sense/topology`, `mcp://k8sense/manifests/{namespace}`, `mcp://k8sense/events/recent` |
+| Prompts   | `investigate-pod`, `triage-events`, `metrics`                                                  |
+
+### Add to Claude Code
+
+Add this entry to `~/.claude.json` under `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "k8sense": {
+      "command": "/absolute/path/to/k8sense",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+(Find the path with `which k8sense` after activating the venv.)
+
+Once Claude Code reconnects, you can:
+
+- Read the resources from the resource picker (e.g. `mcp://k8sense/topology` to inject the cluster topology into context).
+- Call the tools directly from any Claude Code session.
+- Invoke the slash commands `/k8sense:investigate-pod`, `/k8sense:triage-events`, `/k8sense:metrics` with parameter prompts.
+
+### Why both transports
+
+`k8sense ask` keeps the in-process SDK path (no subprocess startup; tools called directly). `k8sense mcp` runs the same handlers over stdio for external consumption. The shared `tools/registry.py` means adding a new tool registers it on both paths in one place.
+
+---
+
 ## Run the eval suite
 
 Scores the agent's behaviour against 15 fingerprinted cluster questions. Requires a reachable cluster + Prometheus.
@@ -165,22 +207,27 @@ pytest                                  # unit tests (no API spend, no network)
 K8SENSE_ALLOW_API=1 pytest -m smoke     # end-to-end against the real cluster
 ```
 
-Current count: **144 unit tests** + 2 smoke (skipped by default).
+Current count: **200 unit tests** + 3 smoke (skipped by default).
 
 ## Architecture (full)
 
 ```
 src/k8sense/
-├── cli.py                       # argparse: ask / doctor
+├── cli.py                       # argparse: ask / doctor / mcp
 ├── agent.py                     # ClaudeAgentOptions wiring, _dispatch_message, subagent detection
 ├── prompts/system.py            # SRE framing + delegation paragraph + topology snapshot
 ├── tools/
 │   ├── kubectl.py               # Phase 1: read-only kubectl with allowlist
-│   └── prometheus.py            # Phase 2: async PromQL client
+│   ├── prometheus.py            # Phase 2: async PromQL client
+│   └── registry.py              # Phase 3: shared ToolSpec + Pydantic input models
 ├── subagents/                   # Phase 2: three AgentDefinitions
 │   ├── event_triager.py
 │   ├── log_investigator.py
 │   └── metrics_analyst.py
+├── mcp_server/                  # Phase 3: stdio MCP server
+│   ├── server.py                #   build_server() + run_stdio()
+│   ├── resources.py             #   3 live cluster resources
+│   └── prompts.py               #   3 workflow prompts
 └── render.py                    # rich-based streaming output
 
 evals/
@@ -188,9 +235,9 @@ evals/
 └── runner.py                    # scorer + live driver
 
 tests/
-├── unit/                        # 144 tests, strict TDD
-├── integration/                 # (deferred — Phase 3)
-└── smoke/                       # 2 end-to-end tests against real cluster
+├── unit/                        # 200 tests, strict TDD
+├── integration/                 # (deferred — Phase 4)
+└── smoke/                       # 3 end-to-end tests against real cluster
 ```
 
 ## License
