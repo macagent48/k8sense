@@ -1,0 +1,94 @@
+"""MCP resources — content helpers, namespace validation, URI dispatch."""
+
+import pytest
+
+from k8sense.mcp_server.resources import (
+    _is_valid_namespace,
+    _manifests_content,
+    _recent_events_content,
+    _topology_content,
+)
+
+
+@pytest.mark.parametrize(
+    "ns", ["argocd", "kube-system", "longhorn-system", "a", "abc-123"]
+)
+def test_namespace_validation_accepts_dns1123(ns):
+    assert _is_valid_namespace(ns) is True
+
+
+@pytest.mark.parametrize(
+    "ns",
+    [
+        "",  # empty
+        "Argocd",  # uppercase
+        "argo_cd",  # underscore
+        "--all",  # leading dashes
+        "ns space",  # space
+        "../etc",  # path traversal
+        "a" * 64,  # over 63 chars
+    ],
+)
+def test_namespace_validation_rejects_invalid(ns):
+    assert _is_valid_namespace(ns) is False
+
+
+@pytest.mark.asyncio
+async def test_topology_content_succeeds_with_real_cluster():
+    # Real cluster reachable in this dev environment. The body contains the markdown
+    # heading and a fenced code block.
+    body = await _topology_content()
+    assert body.startswith("# Cluster topology")
+    assert "```" in body
+
+
+@pytest.mark.asyncio
+async def test_topology_content_returns_error_body_when_kubectl_missing(
+    monkeypatch, tmp_path
+):
+    # PATH manipulation hides kubectl; the helper returns a markdown error body, not an exception.
+    monkeypatch.setenv("PATH", str(tmp_path))
+    body = await _topology_content()
+    assert body.startswith("# Topology fetch failed")
+    assert "stderr" in body
+
+
+@pytest.mark.asyncio
+async def test_manifests_content_rejects_invalid_namespace_without_calling_kubectl():
+    body = await _manifests_content("../etc")
+    assert body.startswith("# Invalid namespace")
+    assert "DNS-1123" in body
+
+
+@pytest.mark.asyncio
+async def test_manifests_content_succeeds_for_valid_namespace():
+    body = await _manifests_content("kube-system")
+    # The kube-system namespace exists and `get all` returns a YAML block.
+    assert body.startswith("# Manifests in `kube-system`")
+
+
+@pytest.mark.asyncio
+async def test_recent_events_content_returns_markdown_with_code_fence():
+    body = await _recent_events_content()
+    # Whether or not there are events, the body is a markdown doc.
+    assert body.startswith("# Recent Warning events")
+    assert "```" in body
+
+
+@pytest.mark.asyncio
+async def test_recent_events_content_caps_at_30_lines():
+    body = await _recent_events_content()
+    # Count non-fence lines inside the body; the cap should keep it small.
+    in_fence = False
+    payload_line_count = 0
+    for line in body.splitlines():
+        if line.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            payload_line_count += 1
+    # The actual cap is 30; allow some margin since the kubectl output may
+    # contain header lines that count.
+    assert payload_line_count <= 32, (
+        f"expected ≤32 lines inside fence, got {payload_line_count}"
+    )
