@@ -125,6 +125,15 @@ def parse_kubectl(args: list[str]) -> KubectlInvocation:
     )
 
 
+def is_recent_pending(phase: str | None, age_seconds: int | None) -> bool:
+    """True iff phase=='Pending' AND age < 5 min.
+
+    Means 'don't auto-delete; pod might still be starting up.'
+    Returns False when age is unknown (None) — default to allowing existing logic.
+    """
+    return phase == "Pending" and age_seconds is not None and age_seconds < 300
+
+
 _UNHEALTHY_STATUSES = frozenset(
     {
         "CrashLoopBackOff",

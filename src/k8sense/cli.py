@@ -86,22 +86,31 @@ def doctor_check() -> list[Finding]:
             )
         )
 
-    from k8sense.permissions import ENV_VAR, CONFIG_PATH, resolve
+    from k8sense.permissions import ENV_VAR, CONFIG_PATH, PermissionMode, resolve
 
     env = os.environ.get(ENV_VAR)
     if env:
+        # Check if env value is actually a valid mode before trusting resolve().
+        # resolve() silently falls through on invalid env, so we must check first.
         try:
-            mode = resolve()
+            PermissionMode(env)
+            # Env is valid → mode came from env
             findings.append(
                 Finding(
                     ok=True,
-                    message=f"permission_mode = {mode.value} (from env {ENV_VAR})",
+                    message=f"permission_mode = {env} (from env {ENV_VAR})",
                 )
             )
-        except Exception:
+        except ValueError:
+            # Env is set but invalid → resolve falls through; surface this with effective mode
+            effective_mode = resolve()
             findings.append(
                 Finding(
-                    ok=False, message=f"permission_mode = invalid env {ENV_VAR}={env!r}"
+                    ok=False,
+                    message=(
+                        f"permission_mode = {effective_mode.value} ({ENV_VAR}={env!r} is invalid; "
+                        f"falling through to config/default)"
+                    ),
                 )
             )
     elif CONFIG_PATH.exists():

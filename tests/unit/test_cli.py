@@ -114,3 +114,16 @@ def test_doctor_reports_env_override(monkeypatch):
     mode_findings = [f for f in findings if "permission_mode" in f.message]
     assert "auto-safe" in mode_findings[0].message
     assert "env" in mode_findings[0].message.lower()
+
+
+def test_doctor_reports_invalid_env_with_fallthrough(monkeypatch):
+    monkeypatch.setenv("K8SENSE_PERMISSION_MODE", "nonsense")
+    findings = doctor_check()
+    mode_findings = [f for f in findings if "permission_mode" in f.message]
+    assert len(mode_findings) == 1
+    assert not mode_findings[0].ok  # invalid
+    assert "nonsense" in mode_findings[0].message
+    assert (
+        "falling through" in mode_findings[0].message
+        or "fall through" in mode_findings[0].message
+    )

@@ -160,8 +160,29 @@ def test_allowlist_rejects_other_mutations():
         )
 
 
-from k8sense.hooks.safe_actions import decide  # noqa: E402
+from k8sense.hooks.safe_actions import decide, is_recent_pending  # noqa: E402
 from k8sense.permissions import PermissionMode  # noqa: E402
+
+
+def test_is_recent_pending_true_for_young_pending():
+    assert is_recent_pending("Pending", 30) is True
+    assert is_recent_pending("Pending", 299) is True
+
+
+def test_is_recent_pending_false_for_old_pending():
+    assert is_recent_pending("Pending", 301) is False
+    assert is_recent_pending("Pending", 3600) is False
+
+
+def test_is_recent_pending_false_for_other_phases():
+    assert is_recent_pending("CrashLoopBackOff", 30) is False
+    assert is_recent_pending(None, 0) is False
+    assert is_recent_pending("Running", 5) is False
+
+
+def test_is_recent_pending_false_when_age_unknown():
+    """No age info → not 'recent pending' (default to allowing the existing logic)."""
+    assert is_recent_pending("Pending", None) is False
 
 
 def test_decide_read_only_always_allow():
