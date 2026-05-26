@@ -92,3 +92,24 @@ async def test_recent_events_content_caps_at_30_lines():
     assert payload_line_count <= 32, (
         f"expected ≤32 lines inside fence, got {payload_line_count}"
     )
+
+
+from mcp.server.lowlevel.server import Server  # noqa: E402
+
+from k8sense.mcp_server.resources import register_resources  # noqa: E402
+
+
+def _build_server_with_resources() -> Server:
+    server = Server("k8sense-test")
+    register_resources(server)
+    return server
+
+
+def test_register_resources_attaches_list_resources_handler():
+    server = _build_server_with_resources()
+    # mcp.server.Server stores handlers in `request_handlers` keyed by request type.
+    from mcp import types
+
+    assert types.ListResourcesRequest in server.request_handlers
+    assert types.ListResourceTemplatesRequest in server.request_handlers
+    assert types.ReadResourceRequest in server.request_handlers

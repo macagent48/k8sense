@@ -54,3 +54,51 @@ async def _recent_events_content() -> str:
         else result["stdout"]
     )
     return f"# Recent Warning events\n\n```\n{body}\n```\n"
+
+
+from mcp.server.lowlevel.server import Server  # noqa: E402
+from mcp.types import Resource, ResourceTemplate  # noqa: E402
+from pydantic import AnyUrl  # noqa: E402
+
+
+def register_resources(server: Server) -> None:
+    @server.list_resources()
+    async def list_resources() -> list[Resource]:
+        return [
+            Resource(
+                uri=AnyUrl("mcp://k8sense/topology"),
+                name="Cluster topology",
+                description="Current namespaces and nodes (kubectl get ns,nodes -o wide).",
+                mimeType="text/markdown",
+            ),
+            Resource(
+                uri=AnyUrl("mcp://k8sense/events/recent"),
+                name="Recent Warning events",
+                description=f"Last {_EVENT_LINES_CAP} cluster-wide Warning events.",
+                mimeType="text/markdown",
+            ),
+        ]
+
+    @server.list_resource_templates()
+    async def list_resource_templates() -> list[ResourceTemplate]:
+        return [
+            ResourceTemplate(
+                uriTemplate="mcp://k8sense/manifests/{namespace}",
+                name="Namespace manifests",
+                description="kubectl get all -n <namespace> -o yaml. Replace {namespace}.",
+                mimeType="text/markdown",
+            ),
+        ]
+
+    @server.read_resource()
+    async def read_resource(uri: AnyUrl) -> str:
+        uri_str = str(uri)
+        if uri_str == "mcp://k8sense/topology":
+            return await _topology_content()
+        if uri_str == "mcp://k8sense/events/recent":
+            return await _recent_events_content()
+        prefix = "mcp://k8sense/manifests/"
+        if uri_str.startswith(prefix):
+            ns = uri_str[len(prefix) :]
+            return await _manifests_content(ns)
+        raise ValueError(f"unknown resource: {uri_str}")
