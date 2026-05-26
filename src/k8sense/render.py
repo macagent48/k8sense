@@ -36,6 +36,15 @@ class Renderer:
         """Render a subagent dispatch marker."""
         self.console.print(Text(f"↳ dispatching {name}: {brief}", style="bold cyan"))
 
+    def proposed_action(self, command: str, hint: str) -> None:
+        """Render the propose-mode marker (yellow-bold)."""
+        self.console.print(
+            Text("⚠ propose mode — k8sense would execute:", style="bold yellow")
+        )
+        self.console.print(Text(f"    $ {command}", style="yellow"))
+        if hint:
+            self.console.print(Text(f"  {hint}", style="dim"))
+
     def tool_result(self, stdout: str, stderr: str, exit_code: int) -> None:
         body_parts = [f"exit_code={exit_code}"]
         if stdout:

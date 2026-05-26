@@ -97,3 +97,22 @@ def test_subagent_dispatch_uses_dispatch_marker(captured):
     output = console.export_text()
     # The marker glyph signals dispatch visually
     assert "↳" in output or "dispatching" in output.lower()
+
+
+def test_proposed_action_renders_command_and_hint(captured):
+    renderer, console = captured
+    renderer.proposed_action(
+        "kubectl delete pod argocd-server-7d -n argocd",
+        "allowlisted mutation surfaced for review in propose mode",
+    )
+    output = console.export_text()
+    assert "propose mode" in output
+    assert "kubectl delete pod argocd-server-7d -n argocd" in output
+    assert "surfaced for review" in output
+
+
+def test_proposed_action_without_hint(captured):
+    renderer, console = captured
+    renderer.proposed_action("kubectl cordon worker1", "")
+    output = console.export_text()
+    assert "kubectl cordon worker1" in output
