@@ -41,3 +41,32 @@ class ToolSpec:
     description: str
     input_model: type[BaseModel]
     handler: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+
+from k8sense.tools.kubectl import kubectl_handler  # noqa: E402
+from k8sense.tools.prometheus import prometheus_handler  # noqa: E402
+
+
+def all_tool_specs() -> list[ToolSpec]:
+    return [
+        ToolSpec(
+            name="kubectl",
+            description=(
+                "Run a READ-ONLY kubectl command against the homelab-k3s cluster. "
+                "Allowed verbs: get, describe, logs, top, events, version. "
+                "Returns stdout, stderr, and exit_code."
+            ),
+            input_model=KubectlInput,
+            handler=kubectl_handler,
+        ),
+        ToolSpec(
+            name="prometheus_query",
+            description=(
+                "Query PromQL against the homelab Prometheus instance. "
+                "Instant query by default; pass `lookback` ('5m', '1h', '24h') for range. "
+                "Read-only — no mutating PromQL operations."
+            ),
+            input_model=PrometheusInput,
+            handler=prometheus_handler,
+        ),
+    ]
