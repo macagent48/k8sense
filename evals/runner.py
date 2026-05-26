@@ -14,6 +14,7 @@ class EvalCase:
     id: str
     question: str
     fingerprints: list[dict[str, Any]]
+    permission_mode: str = "readonly"
 
 
 @dataclass
@@ -87,6 +88,7 @@ def load_dataset(path: Path) -> list[EvalCase]:
                 id=data["id"],
                 question=data["question"],
                 fingerprints=data["fingerprints"],
+                permission_mode=data.get("permission_mode", "readonly"),
             )
         )
     return cases
@@ -106,10 +108,12 @@ async def _run_one_case(case: EvalCase) -> EvalResult:
     )
 
     from k8sense.agent import build_options
+    from k8sense.permissions import PermissionMode
     from k8sense.prompts.system import build_system_prompt
 
     system_prompt = await build_system_prompt()
-    options = build_options(system_prompt)
+    mode = PermissionMode(case.permission_mode)
+    options = build_options(system_prompt, mode=mode)
     final_parts: list[str] = []
     tool_calls: list[dict[str, Any]] = []
 
