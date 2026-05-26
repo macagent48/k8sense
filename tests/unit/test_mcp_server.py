@@ -54,3 +54,23 @@ async def test_call_tool_dispatches_kubectl_via_registry():
     assert any(
         "not allowed" in block.text for block in payload if hasattr(block, "text")
     )
+
+
+@pytest.mark.asyncio
+async def test_call_tool_unknown_name_raises():
+    server = build_server()
+    from mcp import types
+
+    handler = server.request_handlers[types.CallToolRequest]
+    req = types.CallToolRequest(
+        method="tools/call",
+        params=types.CallToolRequestParams(name="nope", arguments={}),
+    )
+    # The MCP framework converts ValueError from call_tool into an isError=True result
+    # rather than propagating a Python exception.
+    result = await handler(req)
+    payload = result.root if hasattr(result, "root") else result
+    assert getattr(payload, "isError", False) is True
+    assert any(
+        "nope" in block.text for block in payload.content if hasattr(block, "text")
+    )

@@ -9,6 +9,7 @@ description = "Claude Agent SDK SRE for homelab k3s clusters"
 requires-python = ">=3.11"
 dependencies = [
     "claude-agent-sdk>=0.1.0",
+    "mcp>=1.23.0",
     "rich>=13.7",
     "python-dotenv>=1.0",
     "httpx>=0.27",

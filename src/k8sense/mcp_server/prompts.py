@@ -123,17 +123,28 @@ def register_prompts(server: Server) -> None:
             ),
         ]
 
+    def _required(args: dict[str, str], key: str, prompt: str) -> str:
+        if key not in args:
+            raise ValueError(f"prompt '{prompt}' missing required argument '{key}'")
+        return args[key]
+
     @server.get_prompt()
     async def get_prompt(
         name: str, arguments: dict[str, str] | None
     ) -> GetPromptResult:
         args = arguments or {}
         if name == "investigate-pod":
-            text = _investigate_pod(pod=args["pod"], namespace=args["namespace"])
+            text = _investigate_pod(
+                pod=_required(args, "pod", "investigate-pod"),
+                namespace=_required(args, "namespace", "investigate-pod"),
+            )
         elif name == "triage-events":
             text = _triage_events(namespace=args.get("namespace"))
         elif name == "metrics":
-            text = _metrics(namespace=args["namespace"], lookback=args.get("lookback"))
+            text = _metrics(
+                namespace=_required(args, "namespace", "metrics"),
+                lookback=args.get("lookback"),
+            )
         else:
             raise ValueError(f"unknown prompt: {name}")
         return GetPromptResult(

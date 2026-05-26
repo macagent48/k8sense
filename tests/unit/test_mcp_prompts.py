@@ -92,3 +92,55 @@ def test_register_prompts_attaches_list_and_get_prompt_handlers():
 
     assert types.ListPromptsRequest in server.request_handlers
     assert types.GetPromptRequest in server.request_handlers
+
+
+@pytest.mark.asyncio
+async def test_get_prompt_routes_investigate_pod():
+    server = _build_server_with_prompts()
+    from mcp import types
+
+    handler = server.request_handlers[types.GetPromptRequest]
+    req = types.GetPromptRequest(
+        method="prompts/get",
+        params=types.GetPromptRequestParams(
+            name="investigate-pod",
+            arguments={"pod": "argocd-server", "namespace": "argocd"},
+        ),
+    )
+    result = await handler(req)
+    messages = result.root.messages if hasattr(result, "root") else result.messages
+    assert any("argocd-server" in m.content.text for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_get_prompt_unknown_name_raises():
+    server = _build_server_with_prompts()
+    from mcp import types
+
+    handler = server.request_handlers[types.GetPromptRequest]
+    req = types.GetPromptRequest(
+        method="prompts/get",
+        params=types.GetPromptRequestParams(name="nope", arguments={}),
+    )
+    with pytest.raises(Exception):
+        await handler(req)
+
+
+@pytest.mark.asyncio
+async def test_get_prompt_missing_required_argument_returns_readable_error():
+    """Missing 'pod' for investigate-pod should produce a readable error, not a bare KeyError."""
+    server = _build_server_with_prompts()
+    from mcp import types
+
+    handler = server.request_handlers[types.GetPromptRequest]
+    req = types.GetPromptRequest(
+        method="prompts/get",
+        params=types.GetPromptRequestParams(
+            name="investigate-pod",
+            arguments={"namespace": "argocd"},  # missing 'pod'
+        ),
+    )
+    with pytest.raises(Exception) as excinfo:
+        await handler(req)
+    # The error message should at least mention 'pod' so the operator can see what's missing
+    assert "pod" in str(excinfo.value).lower()

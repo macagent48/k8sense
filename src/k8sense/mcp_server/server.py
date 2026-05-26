@@ -15,7 +15,7 @@ from k8sense.tools.registry import all_tool_specs
 
 def build_server() -> Server:
     """Construct a configured MCP Server with all k8sense tools, resources, and prompts."""
-    server = Server("k8sense")
+    server = Server("k8sense", version="0.3.0")
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:

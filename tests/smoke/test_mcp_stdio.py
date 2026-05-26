@@ -88,6 +88,7 @@ def test_mcp_stdio_handshake_and_lists():
     # Initialize must succeed
     assert "result" in result["init"], f"init failed: {result['init']}"
     assert result["init"]["result"]["serverInfo"]["name"] == "k8sense"
+    assert result["init"]["result"]["serverInfo"]["version"] == "0.3.0"
 
     # tools/list returns kubectl and prometheus_query
     tool_names = {t["name"] for t in result["tools"]["result"]["tools"]}

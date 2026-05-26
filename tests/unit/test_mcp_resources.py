@@ -113,3 +113,58 @@ def test_register_resources_attaches_list_resources_handler():
     assert types.ListResourcesRequest in server.request_handlers
     assert types.ListResourceTemplatesRequest in server.request_handlers
     assert types.ReadResourceRequest in server.request_handlers
+
+
+@pytest.mark.asyncio
+async def test_read_resource_routes_topology(monkeypatch, tmp_path):
+    # Hide kubectl so the content fetch fails predictably — we just want to confirm routing.
+    monkeypatch.setenv("PATH", str(tmp_path))
+    server = _build_server_with_resources()
+    from mcp import types
+    from pydantic import AnyUrl
+
+    handler = server.request_handlers[types.ReadResourceRequest]
+    req = types.ReadResourceRequest(
+        method="resources/read",
+        params=types.ReadResourceRequestParams(uri=AnyUrl("mcp://k8sense/topology")),
+    )
+    result = await handler(req)
+    contents = result.root.contents if hasattr(result, "root") else result.contents
+    assert any("Topology" in c.text for c in contents)
+
+
+@pytest.mark.asyncio
+async def test_read_resource_routes_manifests_template(monkeypatch, tmp_path):
+    monkeypatch.setenv("PATH", str(tmp_path))
+    server = _build_server_with_resources()
+    from mcp import types
+    from pydantic import AnyUrl
+
+    handler = server.request_handlers[types.ReadResourceRequest]
+    req = types.ReadResourceRequest(
+        method="resources/read",
+        params=types.ReadResourceRequestParams(
+            uri=AnyUrl("mcp://k8sense/manifests/argocd")
+        ),
+    )
+    result = await handler(req)
+    contents = result.root.contents if hasattr(result, "root") else result.contents
+    # kubectl is hidden, so the body is the "fetch failed" markdown for argocd
+    assert any("argocd" in c.text for c in contents)
+
+
+@pytest.mark.asyncio
+async def test_read_resource_unknown_uri_raises():
+    server = _build_server_with_resources()
+    from mcp import types
+    from pydantic import AnyUrl
+
+    handler = server.request_handlers[types.ReadResourceRequest]
+    req = types.ReadResourceRequest(
+        method="resources/read",
+        params=types.ReadResourceRequestParams(uri=AnyUrl("mcp://k8sense/nope")),
+    )
+    with pytest.raises(
+        Exception
+    ):  # ValueError is wrapped by the MCP layer; either way it raises
+        await handler(req)
