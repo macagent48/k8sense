@@ -73,3 +73,22 @@ def test_metrics_trend_when_lookback_provided():
 def test_metrics_rejects_bad_namespace():
     with pytest.raises(ValueError):
         _metrics(namespace="ns space", lookback=None)
+
+
+from mcp.server.lowlevel.server import Server  # noqa: E402
+
+from k8sense.mcp_server.prompts import register_prompts  # noqa: E402
+
+
+def _build_server_with_prompts() -> Server:
+    server = Server("k8sense-test")
+    register_prompts(server)
+    return server
+
+
+def test_register_prompts_attaches_list_and_get_prompt_handlers():
+    server = _build_server_with_prompts()
+    from mcp import types
+
+    assert types.ListPromptsRequest in server.request_handlers
+    assert types.GetPromptRequest in server.request_handlers

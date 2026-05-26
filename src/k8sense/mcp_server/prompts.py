@@ -66,3 +66,78 @@ def _metrics(namespace: str, lookback: str | None) -> str:
         f'- pod memory: `container_memory_working_set_bytes{{namespace="{namespace}"}}`\n\n'
         f"Pass `lookback={lookback}` for the range query. Summarise concrete numbers."
     )
+
+
+from mcp.server.lowlevel.server import Server  # noqa: E402
+from mcp.types import (  # noqa: E402
+    GetPromptResult,
+    Prompt,
+    PromptArgument,
+    PromptMessage,
+    TextContent,
+)
+
+
+def register_prompts(server: Server) -> None:
+    @server.list_prompts()
+    async def list_prompts() -> list[Prompt]:
+        return [
+            Prompt(
+                name="investigate-pod",
+                description="Investigate why a specific pod is failing or restarting.",
+                arguments=[
+                    PromptArgument(name="pod", description="Pod name", required=True),
+                    PromptArgument(
+                        name="namespace",
+                        description="Namespace the pod is in",
+                        required=True,
+                    ),
+                ],
+            ),
+            Prompt(
+                name="triage-events",
+                description="Scan recent Warning events; optionally narrow to a namespace.",
+                arguments=[
+                    PromptArgument(
+                        name="namespace",
+                        description="Namespace to scope to (omit for cluster-wide)",
+                        required=False,
+                    ),
+                ],
+            ),
+            Prompt(
+                name="metrics",
+                description="Report resource usage for a namespace (snapshot or trend).",
+                arguments=[
+                    PromptArgument(
+                        name="namespace",
+                        description="Namespace to inspect",
+                        required=True,
+                    ),
+                    PromptArgument(
+                        name="lookback",
+                        description="Trend window like '1h' / '24h'; omit for snapshot",
+                        required=False,
+                    ),
+                ],
+            ),
+        ]
+
+    @server.get_prompt()
+    async def get_prompt(
+        name: str, arguments: dict[str, str] | None
+    ) -> GetPromptResult:
+        args = arguments or {}
+        if name == "investigate-pod":
+            text = _investigate_pod(pod=args["pod"], namespace=args["namespace"])
+        elif name == "triage-events":
+            text = _triage_events(namespace=args.get("namespace"))
+        elif name == "metrics":
+            text = _metrics(namespace=args["namespace"], lookback=args.get("lookback"))
+        else:
+            raise ValueError(f"unknown prompt: {name}")
+        return GetPromptResult(
+            messages=[
+                PromptMessage(role="user", content=TextContent(type="text", text=text))
+            ]
+        )
