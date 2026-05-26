@@ -148,3 +148,32 @@ def test_extract_subagent_dispatch_truncates_long_brief():
     block_input = {"subagent_type": "et", "description": long}
     _, brief = extract_subagent_dispatch(block_input)
     assert len(brief) <= 120
+
+
+def test_build_options_accepts_mode_and_wires_hook():
+    from k8sense.permissions import PermissionMode
+
+    options = build_options(
+        "SYS", model_id="claude-sonnet-4-6", mode=PermissionMode.AUTO_SAFE
+    )
+    hooks = getattr(options, "hooks", None)
+    assert hooks is not None
+    assert "PreToolUse" in hooks
+    matchers = hooks["PreToolUse"]
+    assert len(matchers) >= 1
+    # The matcher should target the kubectl tool
+    matcher = matchers[0]
+    matcher_attr = (
+        matcher.get("matcher")
+        if isinstance(matcher, dict)
+        else getattr(matcher, "matcher", None)
+    )
+    assert matcher_attr == "mcp__k8sense__kubectl"
+
+
+def test_build_options_default_mode_is_readonly():
+    options = build_options("SYS", model_id="claude-sonnet-4-6")
+    # Hook is still attached
+    hooks = getattr(options, "hooks", None)
+    assert hooks is not None
+    assert "PreToolUse" in hooks

@@ -154,8 +154,15 @@ def main(argv: list[str] | None = None) -> int:
         return _print_findings(findings, renderer)
 
     if ns.command == "ask":
+        from k8sense.permissions import resolve
+
         try:
-            return asyncio.run(run_ask(ns.question, renderer))
+            mode = resolve(flag_value=ns.permission_mode_flag)
+        except ValueError as exc:
+            renderer.error(str(exc))
+            return 1
+        try:
+            return asyncio.run(run_ask(ns.question, renderer, mode=mode))
         except KeyboardInterrupt:
             renderer.error("interrupted")
             return 130

@@ -61,7 +61,7 @@ def test_main_ask_handles_exception_with_one_line_error(monkeypatch, capsys):
     """If run_ask raises, main should print a one-line error and exit 1."""
     import k8sense.cli as cli_mod
 
-    async def boom(question, renderer, model_id=None):
+    async def boom(question, renderer, model_id=None, mode=None):
         raise RuntimeError("simulated SDK failure")
 
     monkeypatch.setattr(cli_mod, "run_ask", boom)

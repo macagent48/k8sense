@@ -10,6 +10,7 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    HookMatcher,
     ResultMessage,
     TextBlock,
     ToolUseBlock,
@@ -18,6 +19,11 @@ from claude_agent_sdk import (
     tool,
 )
 
+from k8sense.hooks.pre_tool_use import build_pre_tool_use_hook
+from k8sense.memory import journal as journal_module
+from k8sense.memory.signature import extract as extract_signature
+from k8sense.memory.signature import extract_text_hints
+from k8sense.permissions import PermissionMode
 from k8sense.prompts.system import build_system_prompt
 from k8sense.render import Renderer
 from k8sense.subagents import (
@@ -34,6 +40,8 @@ _EXIT_CODE_RE = re.compile(r"^exit_code=(-?\d+)", re.MULTILINE)
 
 SUBAGENT_DISPATCH_TOOL_NAME = "Agent"  # SDK names the dispatch primitive "Agent"
 _BRIEF_MAX_LEN = 120
+
+_KUBECTL_MUTATION_VERBS = {"delete", "rollout", "cordon", "drain"}
 
 
 def is_subagent_dispatch(tool_name: str) -> bool:
@@ -115,9 +123,12 @@ def parse_handler_envelope(text: str) -> tuple[int, str, str]:
 
 
 def build_options(
-    system_prompt: str, model_id: str = DEFAULT_MODEL
+    system_prompt: str,
+    model_id: str = DEFAULT_MODEL,
+    mode: PermissionMode = PermissionMode.READONLY,
+    on_propose=None,
 ) -> ClaudeAgentOptions:
-    """Construct ClaudeAgentOptions via the shared tool registry."""
+    """Construct ClaudeAgentOptions via the shared tool registry + hook + subagents."""
     sdk_tools = [
         tool(
             name=spec.name,
@@ -126,7 +137,8 @@ def build_options(
         )(spec.handler)
         for spec in all_tool_specs()
     ]
-    server = create_sdk_mcp_server(name="k8sense", version="0.3.0", tools=sdk_tools)
+    server = create_sdk_mcp_server(name="k8sense", version="0.4.0", tools=sdk_tools)
+    hook_cb = build_pre_tool_use_hook(mode, on_propose=on_propose)
     return ClaudeAgentOptions(
         system_prompt=system_prompt,
         mcp_servers={"k8sense": server},
@@ -136,12 +148,20 @@ def build_options(
             "log_investigator": log_investigator_definition,
             "metrics_analyst": metrics_analyst_definition,
         },
+        hooks={
+            "PreToolUse": [
+                HookMatcher(matcher="mcp__k8sense__kubectl", hooks=[hook_cb]),
+            ],
+        },
         model=model_id,
     )
 
 
 async def run_ask(
-    question: str, renderer: Renderer, model_id: str | None = None
+    question: str,
+    renderer: Renderer,
+    model_id: str | None = None,
+    mode: PermissionMode = PermissionMode.READONLY,
 ) -> int:
     """Run a one-shot investigation. Returns the process exit code."""
     try:
@@ -150,27 +170,93 @@ async def run_ask(
         renderer.error(str(exc))
         return 1
 
+    # Load prior incidents for context injection
+    hints_sig = extract_text_hints(question)
+    prior_entries = journal_module.load_all()
+    similar = journal_module.find_similar(hints_sig, prior_entries)
+    prior_block = journal_module.format_for_prompt(similar)
+
+    augmented_question = question
+    if prior_block:
+        augmented_question = f"{question}\n\n{prior_block}"
+
     options = build_options(
         system_prompt,
         model_id=model_id or os.environ.get("K8SENSE_MODEL", DEFAULT_MODEL),
+        mode=mode,
+        on_propose=lambda c, m: renderer.proposed_action(c, m),
     )
     budget = ToolBudget()
 
+    # Capture lists for journal
+    captured_tool_calls: list[dict] = []
+    captured_tool_results: list[dict] = []
+    final_text_parts: list[str] = []
+    actions_taken: list[str] = []
+
     async with ClaudeSDKClient(options=options) as client:
-        await client.query(question)
+        await client.query(augmented_question)
         async for message in client.receive_response():
-            should_continue = _dispatch_message(message, renderer, budget)
+            should_continue = _dispatch_message_with_capture(
+                message,
+                renderer,
+                budget,
+                captured_tool_calls,
+                captured_tool_results,
+                final_text_parts,
+                actions_taken,
+            )
             if not should_continue:
                 return 1
+
+    final_text = "".join(final_text_parts)
+    signature = extract_signature(
+        tool_calls=captured_tool_calls,
+        tool_results=captured_tool_results,
+        final_text=final_text,
+    )
+    try:
+        journal_module.append_entry(
+            question=question,
+            final_text=final_text,
+            tool_calls=captured_tool_calls,
+            tool_results=captured_tool_results,
+            signature=signature,
+            actions_taken=actions_taken,
+            mode=mode.value,
+        )
+    except OSError as exc:
+        renderer.error(f"could not write journal entry: {exc}")
+
     return 0
 
 
 def _dispatch_message(message, renderer: Renderer, budget: ToolBudget) -> bool:
-    """Route a streamed message to the renderer. Return False to abort the loop."""
+    """Route a streamed message to the renderer. Return False to abort the loop.
+
+    This version is kept for compatibility with the eval runner (doesn't capture).
+    """
+    return _dispatch_message_with_capture(message, renderer, budget, [], [], [], [])
+
+
+def _dispatch_message_with_capture(
+    message,
+    renderer: Renderer,
+    budget: ToolBudget,
+    captured_tool_calls: list[dict],
+    captured_tool_results: list[dict],
+    final_text_parts: list[str],
+    actions_taken: list[str],
+) -> bool:
+    """Route a streamed message to the renderer and capture data for the journal.
+
+    Return False to abort the loop.
+    """
     if isinstance(message, AssistantMessage):
         for block in message.content:
             if isinstance(block, TextBlock):
                 renderer.thinking(block.text)
+                final_text_parts.append(block.text)
             elif isinstance(block, ToolUseBlock):
                 if not budget.charge():
                     renderer.error(f"hit max tool calls ({budget.limit})")
@@ -180,6 +266,14 @@ def _dispatch_message(message, renderer: Renderer, budget: ToolBudget) -> bool:
                     renderer.subagent_dispatch(name, brief)
                 else:
                     renderer.tool_call(block.name, block.input)
+                    captured_tool_calls.append(
+                        {"name": block.name, "input": block.input}
+                    )
+                    # Track kubectl mutation verbs for the journal
+                    if block.name == "mcp__k8sense__kubectl":
+                        args = (block.input or {}).get("args", [])
+                        if args and args[0] in _KUBECTL_MUTATION_VERBS:
+                            actions_taken.append("kubectl " + " ".join(args))
         return True
 
     if isinstance(message, UserMessage):
@@ -193,12 +287,14 @@ def _dispatch_message(message, renderer: Renderer, budget: ToolBudget) -> bool:
             text = _extract_tool_result_text(content_block)
             exit_code, stdout, stderr = parse_handler_envelope(text)
             renderer.tool_result(stdout=stdout, stderr=stderr, exit_code=exit_code)
+            captured_tool_results.append({"text": text})
         return True
 
     if isinstance(message, ResultMessage):
-        final_text = getattr(message, "result", None) or ""
-        if final_text:
-            renderer.final(final_text)
+        result_text = getattr(message, "result", None) or ""
+        if result_text:
+            renderer.final(result_text)
+            final_text_parts.append(result_text)
         return True
 
     return True
