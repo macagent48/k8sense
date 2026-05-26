@@ -2,12 +2,13 @@
 
 A Claude Agent SDK-powered SRE for the homelab-k3s Kubernetes cluster. The codebase is structured as a **staged curriculum** — each phase adds one Agent SDK concept and ships standalone. See [the design spec](docs/superpowers/specs/2026-05-25-k8sense-design.md) for the full 5-phase roadmap.
 
-| Phase | Tag                                                   | Capability                                             | Concepts introduced                                          |
-| ----- | ----------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------ |
-| **1** | [`phase-1`](#phase-1--one-shot-investigator)          | `k8sense ask` — single agent investigates with kubectl | Agent loop, custom tools, streaming, eval harness            |
-| **2** | [`phase-2`](#phase-2--parallel-subagents--prometheus) | Parallel subagent dispatch + Prometheus tool           | `AgentDefinition`, `background=True`, multi-tool MCP server  |
-| **3** | [`phase-3`](#phase-3--mcp-server)                     | `k8sense mcp` stdio server — Claude Code can attach    | MCP `Server`, tools/resources/prompts, Pydantic JSON Schemas |
-| 4-5   | —                                                     | Hooks/memory, sentinel daemon                          | (See spec.)                                                  |
+| Phase | Tag                                                            | Capability                                             | Concepts introduced                                          |
+| ----- | -------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------ |
+| **1** | [`phase-1`](#phase-1--one-shot-investigator)                   | `k8sense ask` — single agent investigates with kubectl | Agent loop, custom tools, streaming, eval harness            |
+| **2** | [`phase-2`](#phase-2--parallel-subagents--prometheus)          | Parallel subagent dispatch + Prometheus tool           | `AgentDefinition`, `background=True`, multi-tool MCP server  |
+| **3** | [`phase-3`](#phase-3--mcp-server)                              | `k8sense mcp` stdio server — Claude Code can attach    | MCP `Server`, tools/resources/prompts, Pydantic JSON Schemas |
+| **4** | [`phase-4`](#phase-4--hooks-permission-modes-incident-journal) | `--auto-fix` / `--propose` modes + incident journal    | PreToolUse hooks, permission modes, persistent memory        |
+| 5     | —                                                              | Sentinel daemon                                        | (See spec.)                                                  |
 
 ---
 
@@ -189,6 +190,62 @@ Once Claude Code reconnects, you can:
 
 ---
 
+## Phase 4 — hooks, permission modes, incident journal
+
+Phase 4 is where k8sense gains real mutation capability — with safety rails.
+
+### Permission modes
+
+| Mode                 | What the hook does                                                     | How to invoke                  |
+| -------------------- | ---------------------------------------------------------------------- | ------------------------------ |
+| `readonly` (default) | Blocks ALL mutations                                                   | `k8sense ask "..."`            |
+| `propose`            | Allowlisted mutations → printed as copy-paste suggestion, NOT executed | `k8sense ask --propose "..."`  |
+| `auto-safe`          | Allowlisted mutations execute; everything else blocked                 | `k8sense ask --auto-fix "..."` |
+
+Precedence: CLI flag > `K8SENSE_PERMISSION_MODE` env var > `~/.k8sense/config.toml` > default. Check the active mode with `k8sense doctor`.
+
+### Safe-action allowlist
+
+Only these four kubectl mutations may run in `auto-safe`:
+
+1. `kubectl delete pod <name>` — only if pod is `CrashLoopBackOff` / `ImagePullBackOff` / `Error` / `Unknown` / `Pending` (status checked live before each delete)
+2. `kubectl rollout restart deployment/<name>`
+3. `kubectl cordon <node>` (reversible; no eviction)
+4. `kubectl delete pod --field-selector=status.phase=Succeeded` (cleanup)
+
+Everything else (`apply`, `scale`, `delete deployment`, `drain`, ...) is denied even in `auto-safe`. Phase 4.1+ may grow the list.
+
+### Incident journal
+
+Every `k8sense ask` invocation appends one line to `~/.k8sense/journal/incidents.jsonl`:
+
+```json
+{"timestamp": "2026-05-26T...", "signature": {"kind": "Pod", "namespace": "argocd", "name": "argocd-server-7d", "reason": "OOMKilled"}, "resolution": "...", "actions_taken": [...], "mode": "auto-safe", ...}
+```
+
+At the start of each new investigation, k8sense looks up similar prior incidents (tiered: exact match → namespace+reason → reason) and injects up to 5 into the prompt so the agent knows "we've seen this before."
+
+Browse manually:
+
+```bash
+cat ~/.k8sense/journal/incidents.jsonl | jq -s 'sort_by(.timestamp) | reverse | .[:5]'
+```
+
+### Try it
+
+```bash
+# Default: readonly investigation, like Phases 1-3
+k8sense ask "why is argocd-server restarting?"
+
+# Propose mode: agent suggests a fix; you copy-paste
+k8sense ask --propose "argocd-server is OOMKilled; restart it"
+
+# Auto-fix mode: agent executes (if allowlisted)
+k8sense ask --auto-fix "argocd-server is OOMKilled; restart it"
+```
+
+---
+
 ## Run the eval suite
 
 Scores the agent's behaviour against 15 fingerprinted cluster questions. Requires a reachable cluster + Prometheus.
@@ -207,37 +264,44 @@ pytest                                  # unit tests (no API spend, no network)
 K8SENSE_ALLOW_API=1 pytest -m smoke     # end-to-end against the real cluster
 ```
 
-Current count: **200 unit tests** + 3 smoke (skipped by default).
+Current count: **291 unit tests** + 4 smoke (skipped by default).
 
 ## Architecture (full)
 
 ```
 src/k8sense/
-├── cli.py                       # argparse: ask / doctor / mcp
-├── agent.py                     # ClaudeAgentOptions wiring, _dispatch_message, subagent detection
+├── cli.py                       # argparse: ask / doctor / mcp; +flags --propose --auto-fix
+├── agent.py                     # ClaudeAgentOptions wiring, hook + journal integration
 ├── prompts/system.py            # SRE framing + delegation paragraph + topology snapshot
+├── permissions.py               # Phase 4: PermissionMode enum + resolution (flag > env > config)
 ├── tools/
-│   ├── kubectl.py               # Phase 1: read-only kubectl with allowlist
-│   ├── prometheus.py            # Phase 2: async PromQL client
-│   └── registry.py              # Phase 3: shared ToolSpec + Pydantic input models
-├── subagents/                   # Phase 2: three AgentDefinitions
+│   ├── kubectl.py
+│   ├── prometheus.py
+│   └── registry.py
+├── subagents/
 │   ├── event_triager.py
 │   ├── log_investigator.py
 │   └── metrics_analyst.py
-├── mcp_server/                  # Phase 3: stdio MCP server
-│   ├── server.py                #   build_server() + run_stdio()
-│   ├── resources.py             #   3 live cluster resources
-│   └── prompts.py               #   3 workflow prompts
-└── render.py                    # rich-based streaming output
+├── hooks/                       # Phase 4: PreToolUse gating
+│   ├── safe_actions.py          #   pure: parse_kubectl, is_allowlisted, decide
+│   └── pre_tool_use.py          #   async SDK hook callback
+├── memory/                      # Phase 4: incident journal
+│   ├── signature.py             #   extract Signature from completed investigation
+│   └── journal.py               #   JSONL append + tiered similarity lookup
+├── mcp_server/
+│   ├── server.py
+│   ├── resources.py
+│   └── prompts.py
+└── render.py
 
 evals/
 ├── dataset.jsonl                # 15 fingerprinted questions
 └── runner.py                    # scorer + live driver
 
 tests/
-├── unit/                        # 200 tests, strict TDD
-├── integration/                 # (deferred — Phase 4)
-└── smoke/                       # 3 end-to-end tests against real cluster
+├── unit/                        # 291 tests, strict TDD
+├── integration/                 # (deferred — Phase 5)
+└── smoke/                       # 4 end-to-end tests against real cluster
 ```
 
 ## License
