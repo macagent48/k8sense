@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
+from k8sense.permissions import PermissionMode
 
 _KIND_ALIASES = {
     "pod": "pod",
@@ -121,4 +122,105 @@ def parse_kubectl(args: list[str]) -> KubectlInvocation:
         name=name,
         namespace=namespace,
         flags=flags,
+    )
+
+
+_UNHEALTHY_STATUSES = frozenset(
+    {
+        "CrashLoopBackOff",
+        "ImagePullBackOff",
+        "ErrImagePull",
+        "Error",
+        "Unknown",
+        "Pending",
+    }
+)
+
+
+def is_read_only(verb: str) -> bool:
+    return verb in {"get", "describe", "logs", "top", "events", "version"}
+
+
+def is_allowlisted(invocation: KubectlInvocation, pod_status: str | None) -> bool:
+    """True iff this invocation matches one of the four safe actions.
+
+    Action 1: delete pod <name> -n <ns>          [requires unhealthy pod_status]
+    Action 2: rollout restart deployment/<name>  [no precondition]
+    Action 3: cordon <node>                      [no precondition]
+    Action 4: delete pod --field-selector=status.phase=Succeeded  [no precondition]
+    """
+    # Action 4 (must check before Action 1 to bypass status precondition)
+    if (
+        invocation.verb == "delete"
+        and invocation.resource_kind in {"pod", "pods"}
+        and invocation.flags.get("field-selector") == "status.phase=Succeeded"
+    ):
+        return True
+
+    # Action 1
+    if (
+        invocation.verb == "delete"
+        and invocation.resource_kind in {"pod", "pods"}
+        and invocation.name
+        and not invocation.flags.get("field-selector")  # not the cleanup variant
+    ):
+        return pod_status in _UNHEALTHY_STATUSES
+
+    # Action 2
+    if (
+        invocation.verb == "rollout"
+        and invocation.resource_kind in {"deployment", "deployments"}
+        and "restart" in invocation.args
+        and invocation.name
+    ):
+        return True
+
+    # Action 3
+    if (
+        invocation.verb == "cordon"
+        and invocation.resource_kind == "node"
+        and invocation.name
+    ):
+        return True
+
+    return False
+
+
+def decide(
+    invocation: KubectlInvocation,
+    mode: PermissionMode,
+    pod_status: str | None = None,
+) -> Decision:
+    """Pure dispatch table.
+
+                       readonly      propose       auto-safe
+    read-only verb     allow         allow         allow
+    allowlisted mut    deny          propose       allow
+    other mutation     deny          deny          deny
+    """
+    if is_read_only(invocation.verb):
+        return Decision(behaviour="allow", message="read-only verb")
+
+    allowlisted = is_allowlisted(invocation, pod_status)
+    if allowlisted:
+        if mode == PermissionMode.READONLY:
+            return Decision(
+                behaviour="deny",
+                message="mutations are blocked in readonly mode; re-run with --auto-fix or --propose",
+            )
+        if mode == PermissionMode.PROPOSE:
+            return Decision(
+                behaviour="propose",
+                message="allowlisted mutation surfaced for review in propose mode",
+            )
+        return Decision(behaviour="allow", message="allowlisted in auto-safe mode")
+
+    # Non-allowlisted mutation
+    return Decision(
+        behaviour="deny",
+        message=(
+            f"verb {invocation.verb!r} not in safe-action allowlist; "
+            "only delete pod / rollout restart deployment / cordon node / "
+            "delete pod (cleanup) are permitted in auto-safe mode"
+        ),
     )
