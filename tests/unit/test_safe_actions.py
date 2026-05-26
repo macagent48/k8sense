@@ -190,11 +190,19 @@ def test_decide_allowlisted_mutation_under_autosafe_is_allow():
     assert d.behaviour == "allow"
 
 
-def test_decide_non_allowlisted_mutation_always_deny():
+def test_decide_non_allowlisted_mutation_deny_in_readonly_and_autosafe():
+    """READONLY and AUTO_SAFE deny non-allowlisted mutations; PROPOSE surfaces them."""
     inv = parse_kubectl(["apply", "-f", "manifest.yaml"])
-    for mode in PermissionMode:
+    for mode in (PermissionMode.READONLY, PermissionMode.AUTO_SAFE):
         d = decide(inv, mode, pod_status=None)
         assert d.behaviour == "deny", f"{mode} should deny non-allowlisted mutation"
+
+
+def test_decide_non_allowlisted_mutation_propose_in_propose_mode():
+    """PROPOSE mode surfaces any mutation so the user can see what would run."""
+    inv = parse_kubectl(["apply", "-f", "manifest.yaml"])
+    d = decide(inv, PermissionMode.PROPOSE, pod_status=None)
+    assert d.behaviour == "propose"
 
 
 def test_decide_delete_pod_with_unknown_status_is_deny_in_autosafe():

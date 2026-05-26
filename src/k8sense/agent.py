@@ -165,7 +165,7 @@ async def run_ask(
 ) -> int:
     """Run a one-shot investigation. Returns the process exit code."""
     try:
-        system_prompt = await build_system_prompt()
+        system_prompt = await build_system_prompt(mode=mode)
     except RuntimeError as exc:
         renderer.error(str(exc))
         return 1

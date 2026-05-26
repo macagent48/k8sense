@@ -196,26 +196,39 @@ def decide(
                        readonly      propose       auto-safe
     read-only verb     allow         allow         allow
     allowlisted mut    deny          propose       allow
-    other mutation     deny          deny          deny
+    other mutation     deny          propose       deny
     """
     if is_read_only(invocation.verb):
         return Decision(behaviour="allow", message="read-only verb")
 
     allowlisted = is_allowlisted(invocation, pod_status)
+
+    if mode == PermissionMode.READONLY:
+        return Decision(
+            behaviour="deny",
+            message="mutations are blocked in readonly mode; re-run with --auto-fix or --propose",
+        )
+
+    if mode == PermissionMode.PROPOSE:
+        return Decision(
+            behaviour="propose",
+            message=(
+                "allowlisted mutation surfaced for review in propose mode"
+                if allowlisted
+                else (
+                    f"verb {invocation.verb!r} is not in the safe-action allowlist "
+                    "(propose mode shows what would run but does not gate safety); "
+                    "use --auto-fix only for: delete pod / rollout restart deployment / "
+                    "cordon node / delete pod (cleanup)"
+                )
+            ),
+        )
+
+    # AUTO_SAFE
     if allowlisted:
-        if mode == PermissionMode.READONLY:
-            return Decision(
-                behaviour="deny",
-                message="mutations are blocked in readonly mode; re-run with --auto-fix or --propose",
-            )
-        if mode == PermissionMode.PROPOSE:
-            return Decision(
-                behaviour="propose",
-                message="allowlisted mutation surfaced for review in propose mode",
-            )
         return Decision(behaviour="allow", message="allowlisted in auto-safe mode")
 
-    # Non-allowlisted mutation
+    # Non-allowlisted mutation in auto-safe
     return Decision(
         behaviour="deny",
         message=(

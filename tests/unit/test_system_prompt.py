@@ -61,3 +61,33 @@ def test_prompt_explains_when_NOT_to_dispatch():
     prompt = build_system_prompt_from_topology("").lower()
     # For simple direct questions, use kubectl yourself — should be in the prompt
     assert "simple" in prompt or "directly" in prompt or "yourself" in prompt
+
+
+def test_prompt_in_propose_mode_permits_mutation_calls():
+    from k8sense.permissions import PermissionMode
+
+    prompt = build_system_prompt_from_topology("", mode=PermissionMode.PROPOSE)
+    # Should NOT say MUST NOT for mutations in propose mode
+    assert "MUST NOT attempt mutating" not in prompt
+    # Should say something like "permitted to call"
+    assert "permitted" in prompt.lower() or "may call" in prompt.lower()
+    # Should reference the hook
+    assert "hook" in prompt.lower()
+
+
+def test_prompt_in_auto_safe_mode_permits_safe_mutations():
+    from k8sense.permissions import PermissionMode
+
+    prompt = build_system_prompt_from_topology("", mode=PermissionMode.AUTO_SAFE)
+    assert "MUST NOT attempt mutating" not in prompt
+    assert "delete pod" in prompt.lower()
+    assert "rollout restart" in prompt.lower()
+    assert "cordon" in prompt.lower()
+
+
+def test_prompt_in_readonly_mode_keeps_must_not_language():
+    from k8sense.permissions import PermissionMode
+
+    prompt = build_system_prompt_from_topology("", mode=PermissionMode.READONLY)
+    # The existing readonly assertion still holds
+    assert "MUST NOT" in prompt

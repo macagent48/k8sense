@@ -2,13 +2,40 @@
 
 from __future__ import annotations
 
+from k8sense.permissions import PermissionMode
 from k8sense.tools.kubectl import run_kubectl
+
+_MUTATION_POLICIES = {
+    PermissionMode.READONLY: (
+        "You MUST NOT attempt mutating verbs (delete, apply, create, scale, patch, "
+        "edit, exec, rollout). The tool will refuse them, but you should not try."
+    ),
+    PermissionMode.PROPOSE: (
+        "You ARE permitted to call kubectl with mutating verbs when the user asks "
+        "for a fix. The PreToolUse hook will intercept the call and surface the "
+        "proposed command to the user WITHOUT executing it. Call the tool — the "
+        "hook needs to see the invocation to produce the proposal. Do not refuse "
+        "to attempt the call."
+    ),
+    PermissionMode.AUTO_SAFE: (
+        "You ARE permitted to call kubectl with the following safe mutations: "
+        "delete pod <name> (only when the pod is broken — CrashLoopBackOff, "
+        "ImagePullBackOff, etc), rollout restart deployment/<name>, cordon <node>, "
+        "and delete pod --field-selector=status.phase=Succeeded (cleanup). Other "
+        "mutations are rejected by the hook. Call the tool — the hook gates safely."
+    ),
+}
+
+
+def _mutation_policy(mode: PermissionMode) -> str:
+    return _MUTATION_POLICIES[mode]
+
 
 _TEMPLATE = """You are k8sense, a careful and methodical SRE for the homelab-k3s Kubernetes cluster.
 
 Your job is to investigate questions about the cluster and synthesise a clear explanation in plain English. You have two investigation primitives: the `kubectl` tool and three specialised subagents.
 
-`kubectl` tool: accepts a list of arguments. Allowed verbs: get, describe, logs, top, events, version. You MUST NOT attempt mutating verbs (delete, apply, create, scale, patch, edit, exec, rollout). The tool will refuse them, but you should not try.
+`kubectl` tool: accepts a list of arguments. Allowed verbs: get, describe, logs, top, events, version. {mutation_policy}
 
 Subagent dispatch rules — delegate to these for investigative questions:
 - event_triager — questions asking to TRIAGE or INVESTIGATE events/warnings (e.g. "why is X failing", "any warnings", "what's going wrong", "recent warning events"). NOT for direct data retrieval like "show me events in namespace X".
@@ -32,12 +59,17 @@ Cluster topology snapshot (captured at startup):
 """
 
 
-def build_system_prompt_from_topology(topology: str) -> str:
-    """Pure assembly: takes a topology string, returns the rendered prompt."""
-    return _TEMPLATE.format(topology=topology.strip() or "(snapshot unavailable)")
+def build_system_prompt_from_topology(
+    topology: str, mode: PermissionMode = PermissionMode.READONLY
+) -> str:
+    """Pure assembly: takes a topology string and mode, returns the rendered prompt."""
+    return _TEMPLATE.format(
+        topology=topology.strip() or "(snapshot unavailable)",
+        mutation_policy=_mutation_policy(mode),
+    )
 
 
-async def build_system_prompt() -> str:
+async def build_system_prompt(mode: PermissionMode = PermissionMode.READONLY) -> str:
     """Fetch the topology snapshot from the live cluster and assemble the prompt.
 
     Raises RuntimeError if the cluster is unreachable.
@@ -47,4 +79,4 @@ async def build_system_prompt() -> str:
         raise RuntimeError(
             f"topology fetch failed (kubectl exit {result['exit_code']}): {result['stderr']}"
         )
-    return build_system_prompt_from_topology(result["stdout"])
+    return build_system_prompt_from_topology(result["stdout"], mode=mode)
