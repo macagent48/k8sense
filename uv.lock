@@ -303,11 +303,12 @@ wheels = [
 
 [[package]]
 name = "k8sense"
-version = "0.1.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "claude-agent-sdk" },
     { name = "httpx" },
+    { name = "mcp" },
     { name = "python-dotenv" },
     { name = "rich" },
 ]
@@ -322,6 +323,7 @@ dev = [
 requires-dist = [
     { name = "claude-agent-sdk", specifier = ">=0.1.0" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "mcp", specifier = ">=1.23.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "python-dotenv", specifier = ">=1.0" },
