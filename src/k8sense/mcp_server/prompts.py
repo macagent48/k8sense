@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import re
+from mcp.server.lowlevel.server import Server
+from mcp.types import (
+    GetPromptResult,
+    Prompt,
+    PromptArgument,
+    PromptMessage,
+    TextContent,
+)
 
-# DNS-1123 label: lowercase alphanumeric and hyphens, 1-63 chars,
-# must start and end with alphanumeric (rejects all-hyphens strings like "--all").
-_NAMESPACE_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
-
-
-def _validate_namespace(ns: str) -> None:
-    if not _NAMESPACE_RE.match(ns):
-        raise ValueError(f"invalid namespace: {ns!r}")
+from k8sense.mcp_server._validation import validate_namespace as _validate_namespace
 
 
 def _investigate_pod(pod: str, namespace: str) -> str:
@@ -66,16 +66,6 @@ def _metrics(namespace: str, lookback: str | None) -> str:
         f'- pod memory: `container_memory_working_set_bytes{{namespace="{namespace}"}}`\n\n'
         f"Pass `lookback={lookback}` for the range query. Summarise concrete numbers."
     )
-
-
-from mcp.server.lowlevel.server import Server  # noqa: E402
-from mcp.types import (  # noqa: E402
-    GetPromptResult,
-    Prompt,
-    PromptArgument,
-    PromptMessage,
-    TextContent,
-)
 
 
 def register_prompts(server: Server) -> None:

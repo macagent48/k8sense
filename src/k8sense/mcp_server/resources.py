@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-import re
+from mcp.server.lowlevel.server import Server
+from mcp.types import Resource, ResourceTemplate
+from pydantic import AnyUrl
 
+from k8sense.mcp_server._validation import is_valid_namespace
 from k8sense.tools.kubectl import run_kubectl
 
-# DNS-1123 label: lowercase alphanumeric and hyphens, 1-63 chars,
-# must start and end with an alphanumeric character.
-_NAMESPACE_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 _EVENT_LINES_CAP = 30
-
-
-def _is_valid_namespace(ns: str) -> bool:
-    return bool(_NAMESPACE_RE.match(ns))
 
 
 async def _topology_content() -> str:
@@ -24,7 +20,7 @@ async def _topology_content() -> str:
 
 
 async def _manifests_content(namespace: str) -> str:
-    if not _is_valid_namespace(namespace):
+    if not is_valid_namespace(namespace):
         return (
             f"# Invalid namespace\n\n"
             f"Namespace '{namespace}' is not a valid DNS-1123 label."
@@ -54,11 +50,6 @@ async def _recent_events_content() -> str:
         else result["stdout"]
     )
     return f"# Recent Warning events\n\n```\n{body}\n```\n"
-
-
-from mcp.server.lowlevel.server import Server  # noqa: E402
-from mcp.types import Resource, ResourceTemplate  # noqa: E402
-from pydantic import AnyUrl  # noqa: E402
 
 
 def register_resources(server: Server) -> None:

@@ -63,11 +63,35 @@ async def _run_mcp_session() -> dict:
         # 5. prompts/list
         prompts_resp = await _request(proc, {"method": "prompts/list"}, 4)
 
+        # 6. tools/call — exercise the call path with a disallowed verb so no cluster work runs
+        call_resp = await _request(
+            proc,
+            {
+                "method": "tools/call",
+                "params": {
+                    "name": "kubectl",
+                    "arguments": {"args": ["delete", "pod", "x"]},
+                },
+            },
+            5,
+        )
+        # 7. resources/read — exercise the read path for topology
+        read_resp = await _request(
+            proc,
+            {
+                "method": "resources/read",
+                "params": {"uri": "mcp://k8sense/topology"},
+            },
+            6,
+        )
+
         return {
             "init": init_resp,
             "tools": tools_resp,
             "resources": resources_resp,
             "prompts": prompts_resp,
+            "call": call_resp,
+            "read": read_resp,
         }
     finally:
         proc.stdin.close()
@@ -104,3 +128,21 @@ def test_mcp_stdio_handshake_and_lists():
     # prompts/list returns the three workflow prompts
     prompt_names = {p["name"] for p in result["prompts"]["result"]["prompts"]}
     assert prompt_names == {"investigate-pod", "triage-events", "metrics"}
+
+    # tools/call routed to the kubectl handler; the allowlist rejection text appears.
+    # The MCP layer reports tool errors via isError=True with the rejection in the content.
+    call_content = result["call"]["result"]["content"]
+    call_text = " ".join(block.get("text", "") for block in call_content)
+    assert "not allowed" in call_text or "delete" in call_text, (
+        f"unexpected call response: {result['call']}"
+    )
+
+    # resources/read for topology returned at least one content block.
+    read_contents = result["read"]["result"]["contents"]
+    assert len(read_contents) >= 1
+    # The first content's text mentions either the markdown heading or stderr (if kubectl is hidden in CI)
+    first_text = read_contents[0].get("text", "")
+    assert (
+        "topology" in first_text.lower()
+        or "topology fetch failed" in first_text.lower()
+    )

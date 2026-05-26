@@ -2,8 +2,8 @@
 
 import pytest
 
+from k8sense.mcp_server._validation import is_valid_namespace
 from k8sense.mcp_server.resources import (
-    _is_valid_namespace,
     _manifests_content,
     _recent_events_content,
     _topology_content,
@@ -14,7 +14,7 @@ from k8sense.mcp_server.resources import (
     "ns", ["argocd", "kube-system", "longhorn-system", "a", "abc-123"]
 )
 def test_namespace_validation_accepts_dns1123(ns):
-    assert _is_valid_namespace(ns) is True
+    assert is_valid_namespace(ns) is True
 
 
 @pytest.mark.parametrize(
@@ -30,7 +30,7 @@ def test_namespace_validation_accepts_dns1123(ns):
     ],
 )
 def test_namespace_validation_rejects_invalid(ns):
-    assert _is_valid_namespace(ns) is False
+    assert is_valid_namespace(ns) is False
 
 
 @pytest.mark.asyncio
