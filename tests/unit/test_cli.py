@@ -72,3 +72,9 @@ def test_main_ask_handles_exception_with_one_line_error(monkeypatch, capsys):
     assert "simulated SDK failure" in captured.out + captured.err
     # And it should NOT be a Python traceback.
     assert "Traceback" not in captured.out + captured.err
+
+
+def test_parser_accepts_mcp_subcommand():
+    parser = build_parser()
+    ns = parser.parse_args(["mcp"])
+    assert ns.command == "mcp"

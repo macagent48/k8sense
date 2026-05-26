@@ -34,6 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("doctor", help="check the local environment")
 
+    sub.add_parser("mcp", help="run k8sense as a stdio MCP server")
+
     return parser
 
 
@@ -104,6 +106,15 @@ def main(argv: list[str] | None = None) -> int:
             # Spec: SDK / network / auth errors bubble up as a one-line error, exit 1.
             renderer.error(f"{type(exc).__name__}: {exc}")
             return 1
+
+    if ns.command == "mcp":
+        from k8sense.mcp_server.server import run_stdio
+
+        try:
+            asyncio.run(run_stdio())
+        except KeyboardInterrupt:
+            return 130
+        return 0
 
     # Unreachable: argparse enforces required=True on subparsers.
     raise RuntimeError(f"unexpected command: {ns.command}")
