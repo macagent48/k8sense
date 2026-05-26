@@ -78,3 +78,39 @@ def test_parser_accepts_mcp_subcommand():
     parser = build_parser()
     ns = parser.parse_args(["mcp"])
     assert ns.command == "mcp"
+
+
+def test_ask_accepts_propose_flag():
+    parser = build_parser()
+    ns = parser.parse_args(["ask", "--propose", "fix it"])
+    assert ns.permission_mode_flag == "propose"
+    assert ns.question == "fix it"
+
+
+def test_ask_accepts_auto_fix_flag():
+    parser = build_parser()
+    ns = parser.parse_args(["ask", "--auto-fix", "fix it"])
+    assert ns.permission_mode_flag == "auto-safe"
+
+
+def test_ask_without_flag_has_no_mode_flag():
+    parser = build_parser()
+    ns = parser.parse_args(["ask", "just a question"])
+    assert ns.permission_mode_flag is None
+
+
+def test_doctor_finds_permission_mode_with_default(monkeypatch):
+    monkeypatch.delenv("K8SENSE_PERMISSION_MODE", raising=False)
+    findings = doctor_check()
+    mode_findings = [f for f in findings if "permission_mode" in f.message]
+    assert len(mode_findings) == 1
+    assert "readonly" in mode_findings[0].message
+    assert "default" in mode_findings[0].message
+
+
+def test_doctor_reports_env_override(monkeypatch):
+    monkeypatch.setenv("K8SENSE_PERMISSION_MODE", "auto-safe")
+    findings = doctor_check()
+    mode_findings = [f for f in findings if "permission_mode" in f.message]
+    assert "auto-safe" in mode_findings[0].message
+    assert "env" in mode_findings[0].message.lower()

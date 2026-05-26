@@ -31,6 +31,21 @@ def build_parser() -> argparse.ArgumentParser:
     ask.add_argument(
         "question", help="natural-language question, e.g. 'why is pod X crashing?'"
     )
+    ask.add_argument(
+        "--propose",
+        action="store_const",
+        const="propose",
+        dest="permission_mode_flag",
+        help="propose mutations instead of executing (prints copy-paste command)",
+    )
+    ask.add_argument(
+        "--auto-fix",
+        action="store_const",
+        const="auto-safe",
+        dest="permission_mode_flag",
+        help="auto-execute whitelisted safe mutations",
+    )
+    ask.set_defaults(permission_mode_flag=None)
 
     sub.add_parser("doctor", help="check the local environment")
 
@@ -68,6 +83,48 @@ def doctor_check() -> list[Finding]:
             Finding(
                 ok=False,
                 message="no auth: set ANTHROPIC_API_KEY or install the claude CLI",
+            )
+        )
+
+    from k8sense.permissions import ENV_VAR, CONFIG_PATH, resolve
+
+    env = os.environ.get(ENV_VAR)
+    if env:
+        try:
+            mode = resolve()
+            findings.append(
+                Finding(
+                    ok=True,
+                    message=f"permission_mode = {mode.value} (from env {ENV_VAR})",
+                )
+            )
+        except Exception:
+            findings.append(
+                Finding(
+                    ok=False, message=f"permission_mode = invalid env {ENV_VAR}={env!r}"
+                )
+            )
+    elif CONFIG_PATH.exists():
+        try:
+            mode = resolve()
+            findings.append(
+                Finding(
+                    ok=True,
+                    message=f"permission_mode = {mode.value} (from {CONFIG_PATH})",
+                )
+            )
+        except Exception:
+            findings.append(
+                Finding(
+                    ok=False,
+                    message=f"permission_mode = invalid value in {CONFIG_PATH}",
+                )
+            )
+    else:
+        findings.append(
+            Finding(
+                ok=True,
+                message="permission_mode = readonly (default; no flag, env, or config override)",
             )
         )
 
